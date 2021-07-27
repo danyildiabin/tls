@@ -8,7 +8,7 @@ const recieveError = error {
     NoDataAvailable,
     UnknownError,
 };
-// gg
+
 pub fn main() anyerror!void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
