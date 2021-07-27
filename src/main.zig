@@ -1,13 +1,8 @@
 const std = @import("std");
 const allocator = std.mem.Allocator;
 const ws = std.os.windows.ws2_32;
-const hostname = "discord.com";
+const hostname = "google.com";
 const port = "443";
-const recieveError = error {
-    ConnectionClosed,
-    NoDataAvailable,
-    UnknownError,
-};
 
 pub fn main() anyerror!void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
@@ -43,7 +38,7 @@ pub fn main() anyerror!void {
 
     // var file: []u8 = openfile();
     // showMem(file, "Opened file");
-    var request: []u8 = try createPacket(&gpa.allocator);
+    var request: []u8 = try createClientHello(&gpa.allocator);
     showMem(request, "Generated packet");
 
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
@@ -53,17 +48,17 @@ pub fn main() anyerror!void {
     }
     gpa.allocator.free(request);
 
-    var recv_buf: []u8 = try recievePacket(sock, &gpa.allocator);
+    var answer: packet = try recievePacket(sock, &gpa.allocator);
     std.log.info("Recieved packet", .{});
-    if (recv_buf[0] == 21) {
+    if (answer.buffer[0] == 21) {
         std.debug.print("error: Recieved packet is an alert! (", .{});
-        switch(recv_buf[5]){
+        switch(answer.buffer[5]){
             1 => std.debug.print("warning", .{}),
             2 => std.debug.print("fatal", .{}),
             else => unreachable,
         }
         std.debug.print(")\nerror: alert description is \"", .{});
-        switch(recv_buf[6]){
+        switch(answer.buffer[6]){
             0   => std.debug.print("Close notify", .{}),
             10  => std.debug.print("Unexpected message", .{}),
             20  => std.debug.print("Bad record MAC", .{}),
@@ -99,67 +94,67 @@ pub fn main() anyerror!void {
         }
         std.debug.print("\"\n", .{});
     }
-    showMem(recv_buf, "Packet content");
-    gpa.allocator.free(recv_buf);
+    showMem(answer.buffer[0..answer.filled], "Packet content");
+    if (answer.conn_closed == false) std.log.info("Connection is still active", .{});
+    answer.filled = @intCast(usize, ws.recv(sock, @ptrCast([*]u8, answer.buffer.ptr), @intCast(i32, answer.buffer.len), 0));
+    showMem(answer.buffer[0..answer.filled], "Packet content");
+    gpa.allocator.free(answer.buffer);
     _ = try std.os.windows.WSACleanup();
 }
 
-pub const timeval = extern struct {
-    tv_sec: c_long,
-    tv_usec: c_long,
+const packet = struct{
+    buffer: []u8,
+    filled: usize,
+    conn_closed: bool,
 };
-pub extern "ws2_32" fn select(
-    nfds: i32,
-    readfds: ?*ws.fd_set,
-    writefds: ?*ws.fd_set,
-    exceptfds: ?*ws.fd_set,
-    timeout: ?*const timeval,
-) callconv(std.os.windows.WINAPI) i32;
 
-pub fn recievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror![]u8 {
-    var fd_set: ws.fd_set = ws.fd_set {
-        .fd_count = 1,
-        .fd_array = undefined,
-    };
-    fd_set.fd_array[0] = sock;
-
-    const time: timeval = timeval{
-        .tv_sec = 1,
-        .tv_usec = 0,
-    };
-
-    const bufsize = 1;
+/// Recieves TCP packet from socket
+/// Allocates packet buffer of needed size
+/// packet buffer needs to be freed manualy
+/// Use only if server closes connection after sending data
+pub fn recievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
+    const bufsize = 512;
     var buffer: []u8 = try alloc.alloc(u8, bufsize);
-    errdefer alloc.free(buffer);
-    var recieved: usize = 0;
-    var sel: i32 = undefined;
     var recv: i32 = undefined;
-    var mode: u32 = 1;  // 1 to enable non-blocking socket
-    _ = ws.ioctlsocket(sock, ws.FIONBIO, &mode);
-    defer _ = ws.ioctlsocket(sock, ws.FIONBIO, &mode);
-    defer mode = 0;
+    var recieved: usize = 0;
+    var mode: u32 = 1;
     while (true) {
-        sel = select(0, &fd_set, null, null, &time);
-        if (sel > 0) {
-            // Make sure buffer can fit all the data
-            if (buffer.len < recieved + bufsize) {
-                buffer = try alloc.realloc(buffer, buffer.len + bufsize);
-            }
-            recv = ws.recv(sock, @ptrCast([*]u8, &buffer[recieved]), bufsize, 0);
-            recieved += @intCast(usize, recv);
-            if (recv == 0 and recieved == 0) return recieveError.ConnectionClosed;
-            continue;
-        } else if (sel == 0) {
-            // Nothing changed for 1 second.
-            if (recieved > 0) return buffer[0..recieved];
-            return recieveError.NoDataAvailable;
-        } else {
-            return recieveError.UnknownError;
+        // Make sure buffer can fit all the data
+        if (buffer.len < recieved + bufsize) {
+            buffer = try alloc.realloc(buffer, buffer.len + bufsize);
         }
+        recv = ws.recv(sock, @ptrCast([*]u8, &buffer[recieved]), bufsize, 0);
+        // Set IO mode to non-blocking after recv awaited for data to come
+        if (mode == 1) {
+            if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
+            mode = 0;
+        }
+        if (recv == 0) {
+            if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
+            return packet {
+                .buffer = buffer,
+                .filled = recieved,
+                .conn_closed = true,
+            };
+        }
+        // handle errors
+        if (recv == -1) switch (ws.WSAGetLastError()) {
+            ws.WinsockError.WSAEWOULDBLOCK => {
+                mode = 0;
+                if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
+                return packet {
+                    .buffer = buffer,
+                    .filled = recieved,
+                    .conn_closed = false,
+                };
+            },
+            else => return error.recv_failed,
+        };
+        recieved += @intCast(usize, recv);
     }
 }
 
-pub fn createPacket(alloc: *std.mem.Allocator) anyerror![]u8 {
+pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     var filled: usize = 0;
     var data: []u8 = undefined;
 
@@ -220,9 +215,7 @@ pub fn createPacket(alloc: *std.mem.Allocator) anyerror![]u8 {
     data[filled] = 0x00;
     filled += 1;
     // Extensions Length
-
     // Extensions
-
     // Filling sizes
     // Record Header
     std.mem.copy(u8, data[3..5], intToBytes(u16, @intCast(u16, data.len-5)));
