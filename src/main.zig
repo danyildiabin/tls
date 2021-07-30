@@ -48,109 +48,161 @@ pub fn main() anyerror!void {
     }
     gpa.allocator.free(request);
 
-    var answer: packet = try recievePacket(sock, &gpa.allocator);
+    var answer: packet = try tlsRecieve(sock, &gpa.allocator);
+    defer gpa.allocator.free(answer.buffer);
     std.log.info("Recieved packet", .{});
-    if (answer.buffer[0] == 21) {
-        std.debug.print("error: Recieved packet is an alert! (", .{});
-        switch(answer.buffer[5]){
-            1 => std.debug.print("warning", .{}),
-            2 => std.debug.print("fatal", .{}),
-            else => unreachable,
-        }
-        std.debug.print(")\nerror: alert description is \"", .{});
-        switch(answer.buffer[6]){
-            0   => std.debug.print("Close notify", .{}),
-            10  => std.debug.print("Unexpected message", .{}),
-            20  => std.debug.print("Bad record MAC", .{}),
-            21  => std.debug.print("Decryption failed", .{}),
-            22  => std.debug.print("Record overflow", .{}),
-            30  => std.debug.print("Decompression failure", .{}),
-            40  => std.debug.print("Handshake failure", .{}),
-            41  => std.debug.print("No certificate", .{}),
-            42  => std.debug.print("Bad certificate", .{}),
-            43  => std.debug.print("Unsupported certificate", .{}),
-            44  => std.debug.print("Certificate revoked", .{}),
-            45  => std.debug.print("Certificate expired", .{}),
-            46  => std.debug.print("Certificate unknown", .{}),
-            47  => std.debug.print("Illegal parameter", .{}),
-            48  => std.debug.print("Unknown CA (Certificate authority)", .{}),
-            49  => std.debug.print("Access denied", .{}),
-            50  => std.debug.print("Decode error", .{}),
-            51  => std.debug.print("Decrypt error", .{}),
-            60  => std.debug.print("Export restriction", .{}),
-            70  => std.debug.print("Protocol version", .{}),
-            71  => std.debug.print("Insufficient security", .{}),
-            80  => std.debug.print("Internal error", .{}),
-            86  => std.debug.print("Inappropriate fallback", .{}),
-            90  => std.debug.print("User canceled", .{}),
-            100 => std.debug.print("No renegotiation ", .{}),
-            110 => std.debug.print("Unsupported extension", .{}),
-            111 => std.debug.print("Certificate unobtainable", .{}),
-            112 => std.debug.print("Unrecognized name", .{}),
-            113 => std.debug.print("Bad certificate status response", .{}),
-            114 => std.debug.print("Bad certificate hash value", .{}),
-            115 => std.debug.print("Unknown PSK identity (used in TLS-PSK and TLS-SRP)", .{}),
-            else => unreachable,
-        }
-        std.debug.print("\"\n", .{});
-    }
     showMem(answer.buffer[0..answer.filled], "Packet content");
-    if (answer.conn_closed == false) std.log.info("Connection is still active", .{});
-    answer.filled = @intCast(usize, ws.recv(sock, @ptrCast([*]u8, answer.buffer.ptr), @intCast(i32, answer.buffer.len), 0));
-    showMem(answer.buffer[0..answer.filled], "Packet content");
-    gpa.allocator.free(answer.buffer);
+
+    var answer1: packet = try tlsRecieve(sock, &gpa.allocator);
+    defer gpa.allocator.free(answer1.buffer);
+    std.log.info("Recieved packet", .{});
+    showMem(answer1.buffer[0..answer1.filled], "Packet content");
+
+    var answer2: packet = try tlsRecieve(sock, &gpa.allocator);
+    defer gpa.allocator.free(answer2.buffer);
+    std.log.info("Recieved packet", .{});
+    showMem(answer2.buffer[0..answer2.filled], "Packet content");
+
+    var answer3: packet = try tlsRecieve(sock, &gpa.allocator);
+    defer gpa.allocator.free(answer3.buffer);
+    std.log.info("Recieved packet", .{});
+    showMem(answer3.buffer[0..answer3.filled], "Packet content");
+
     _ = try std.os.windows.WSACleanup();
 }
 
 const packet = struct{
     buffer: []u8,
     filled: usize,
-    conn_closed: bool,
 };
 
 /// Recieves TCP packet from socket
 /// Allocates packet buffer of needed size
 /// packet buffer needs to be freed manualy
 /// Use only if server closes connection after sending data
-pub fn recievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
+pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
     const bufsize = 512;
     var buffer: []u8 = try alloc.alloc(u8, bufsize);
     var recv: i32 = undefined;
     var recieved: usize = 0;
-    var mode: u32 = 1;
+    recv = ws.recv(sock, @ptrCast([*]u8, &buffer[recieved]), bufsize, ws.MSG_PEEK);
+    if (recv == 0) return error.Connection_Closed;
+    if (recv == -1) return error.recv_failed;
+    // Handle packet type
+    switch (buffer[0]) {
+        // Alert Record
+        0x15 => {
+            std.debug.print("error: Recieved packet is an alert! (", .{});
+            switch(buffer[5]) {
+                1 => std.debug.print("warning", .{}),
+                2 => {
+                    std.debug.print("fatal", .{});
+                    return error.recievedFatalAlert;
+                },
+                else => unreachable,
+            }
+            std.debug.print(")\nerror: alert description is \"", .{});
+            switch(buffer[6]){
+                0   => std.debug.print("Close notify", .{}),
+                10  => std.debug.print("Unexpected message", .{}),
+                20  => std.debug.print("Bad record MAC", .{}),
+                21  => std.debug.print("Decryption failed", .{}),
+                22  => std.debug.print("Record overflow", .{}),
+                30  => std.debug.print("Decompression failure", .{}),
+                40  => std.debug.print("Handshake failure", .{}),
+                41  => std.debug.print("No certificate", .{}),
+                42  => std.debug.print("Bad certificate", .{}),
+                43  => std.debug.print("Unsupported certificate", .{}),
+                44  => std.debug.print("Certificate revoked", .{}),
+                45  => std.debug.print("Certificate expired", .{}),
+                46  => std.debug.print("Certificate unknown", .{}),
+                47  => std.debug.print("Illegal parameter", .{}),
+                48  => std.debug.print("Unknown CA (Certificate authority)", .{}),
+                49  => std.debug.print("Access denied", .{}),
+                50  => std.debug.print("Decode error", .{}),
+                51  => std.debug.print("Decrypt error", .{}),
+                60  => std.debug.print("Export restriction", .{}),
+                70  => std.debug.print("Protocol version", .{}),
+                71  => std.debug.print("Insufficient security", .{}),
+                80  => std.debug.print("Internal error", .{}),
+                86  => std.debug.print("Inappropriate fallback", .{}),
+                90  => std.debug.print("User canceled", .{}),
+                100 => std.debug.print("No renegotiation ", .{}),
+                110 => std.debug.print("Unsupported extension", .{}),
+                111 => std.debug.print("Certificate unobtainable", .{}),
+                112 => std.debug.print("Unrecognized name", .{}),
+                113 => std.debug.print("Bad certificate status response", .{}),
+                114 => std.debug.print("Bad certificate hash value", .{}),
+                115 => std.debug.print("Unknown PSK identity (used in TLS-PSK and TLS-SRP)", .{}),
+                else => unreachable,
+            }
+            std.debug.print("\"\n", .{});
+            return error.recievedWaringAlert;
+        },
+        // Handshake record
+        0x16 => std.log.debug("recieved handshake record", .{}),
+        // Application Data
+        0x17 => {
+            std.log.debug("recieved application data", .{});
+            // return recieved packet as slice
+            return error.Cannot_Handle_Packet_Type;
+        },
+        // ChangeCipherSpec
+        0x14 => {
+            std.log.debug("recieved ChangeCipherSpec", .{});
+            // return recieved packet as slice
+            return error.Cannot_Handle_Packet_Type;
+        },
+        // HeartBeat
+        0x18 => {
+            std.log.debug("recieved ChangeCipherSpec", .{});
+            // return error?
+            return error.Cannot_Handle_Packet_Type;
+        },
+        else => {
+            std.log.err("recieved non-TLS data", .{});
+            unreachable;
+        }
+    }
+
+    // Handle protocol version
+    var version: u16 = @intCast(u16, buffer[2]) | @intCast(u16, buffer[1]) << 8;
+    switch (version) {
+        0x0300 => {
+            std.log.debug("Packet Uses SSL 3.0", .{});
+            return error.Unsupported_TLS_Version;
+        },
+        0x0301 => {
+            std.log.debug("Packet Uses TLS 1.0", .{});
+            return error.Unsupported_TLS_Version;
+        },
+        0x0302 => {
+            std.log.debug("Packet Uses TLS 1.1", .{});
+            return error.Unsupported_TLS_Version;
+        },
+        0x0303 => {
+            std.log.debug("Packet Uses TLS 1.2", .{});
+        },
+        0x0304 => {
+            std.log.debug("Packet Uses TLS 1.3", .{});
+            return error.Unsupported_TLS_Version;
+        },
+        else => unreachable,
+    }
+
+    var packet_size: u16 = (@intCast(u16, buffer[4]) | @intCast(u16, buffer[3]) << 8) + 5;
     while (true) {
         // Make sure buffer can fit all the data
-        if (buffer.len < recieved + bufsize) {
-            buffer = try alloc.realloc(buffer, buffer.len + bufsize);
-        }
-        recv = ws.recv(sock, @ptrCast([*]u8, &buffer[recieved]), bufsize, 0);
-        // Set IO mode to non-blocking after recv awaited for data to come
-        if (mode == 1) {
-            if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
-            mode = 0;
-        }
-        if (recv == 0) {
-            if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
-            return packet {
-                .buffer = buffer,
-                .filled = recieved,
-                .conn_closed = true,
-            };
-        }
-        // handle errors
-        if (recv == -1) switch (ws.WSAGetLastError()) {
-            ws.WinsockError.WSAEWOULDBLOCK => {
-                mode = 0;
-                if (ws.ioctlsocket(sock, ws.FIONBIO, &mode) != 0) return error.ioFuncFailed;
-                return packet {
-                    .buffer = buffer,
-                    .filled = recieved,
-                    .conn_closed = false,
-                };
-            },
-            else => return error.recv_failed,
-        };
+        if (buffer.len < recieved + bufsize) buffer = try alloc.realloc(buffer, buffer.len + bufsize);
+        var to_recieve: i32 = if (recieved + bufsize > packet_size) @intCast(i32, packet_size - recieved) else bufsize;
+        recv = ws.recv(sock, @ptrCast([*]u8, &buffer[recieved]), to_recieve, 0);
+        if (recv == 0) return error.Connection_Closed;
+        if (recv == -1) return error.recv_failed;
         recieved += @intCast(usize, recv);
+        if (recieved >= packet_size) return packet {
+            .buffer = buffer,
+            .filled = packet_size,
+        };
     }
 }
 
