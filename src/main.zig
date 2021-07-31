@@ -1,14 +1,33 @@
 const std = @import("std");
 const allocator = std.mem.Allocator;
 const ws = std.os.windows.ws2_32;
-const hostname = "google.com";
-const port = "443";
 
 pub fn main() anyerror!void {
+    _ = try std.os.windows.WSAStartup(2, 2);
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
-    _ = try std.os.windows.WSAStartup(2, 2);
+    var TLShandle: usize = try initTLS("google.com", &gpa.allocator);
+    _ = TLShandle;
+    _ = try std.os.windows.WSACleanup();
+}
 
+const packetType = enum {
+    ServerHelloDone,
+    ServerHello,
+    Certificate,
+    ChangeCipherSpec,
+    ServerKey,
+    Undefined,
+};
+
+const TLSpacket = struct {
+    buffer: []u8,
+    filled: usize,
+    type: packetType,
+};
+
+pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usize {
+    const port = "443";
     var hints: ws.addrinfo = .{
         .flags = 0,
         .family = ws.AF_UNSPEC,
@@ -26,61 +45,43 @@ pub fn main() anyerror!void {
     defer _ = ws.closesocket(sock);
     if (sock == ws.INVALID_SOCKET) {
         std.log.err("Socket creation failed", .{});
-    } else { 
-        std.log.info("Socket created", .{});
+        return error.socketCreationFailed;
     }
+    std.log.debug("Created socket", .{});
+    
 
     if (ws.connect(sock, @ptrCast(*const ws.sockaddr, res.*.addr), @intCast(i32, res.*.addrlen)) != 0) {
-        std.log.err("Cannot connect trough TCP", .{});
-    } else { 
-        std.log.info("Connected to {s} on port {s}", .{hostname, port});
+        std.log.err("Connection to {s} on port {s} failed!", .{hostname, port});
+        return error.connectFailed;
     }
+    std.log.debug("Connected to {s} on port {s}", .{hostname, port});
 
     // var file: []u8 = openfile();
     // showMem(file, "Opened file");
-    var request: []u8 = try createClientHello(&gpa.allocator);
+    var request: []u8 = try createClientHello(alloc);
     showMem(request, "Generated packet");
 
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
         std.log.err("Error while sending: {d}", .{ws.WSAGetLastError()});
-    } else { 
-        std.log.info("Sent packet", .{});
+        return error.sendFailed;
     }
-    gpa.allocator.free(request);
+    std.log.debug("Sent packet", .{});
 
-    var answer: packet = try tlsRecieve(sock, &gpa.allocator);
-    defer gpa.allocator.free(answer.buffer);
-    std.log.info("Recieved packet", .{});
-    showMem(answer.buffer[0..answer.filled], "Packet content");
-
-    var answer1: packet = try tlsRecieve(sock, &gpa.allocator);
-    defer gpa.allocator.free(answer1.buffer);
-    std.log.info("Recieved packet", .{});
-    showMem(answer1.buffer[0..answer1.filled], "Packet content");
-
-    var answer2: packet = try tlsRecieve(sock, &gpa.allocator);
-    defer gpa.allocator.free(answer2.buffer);
-    std.log.info("Recieved packet", .{});
-    showMem(answer2.buffer[0..answer2.filled], "Packet content");
-
-    var answer3: packet = try tlsRecieve(sock, &gpa.allocator);
-    defer gpa.allocator.free(answer3.buffer);
-    std.log.info("Recieved packet", .{});
-    showMem(answer3.buffer[0..answer3.filled], "Packet content");
-
-    _ = try std.os.windows.WSACleanup();
+    var answer: TLSpacket = undefined;
+    while (answer.type != packetType.ServerHelloDone) {
+        answer = try tlsRecievePacket(sock, alloc);
+        std.log.debug("Recieved {any}", .{answer.type});
+        showMem(answer.buffer[0..answer.filled], "Packet contents");
+    }
+    // return dummy number for now ha
+    return 0;
 }
-
-const packet = struct{
-    buffer: []u8,
-    filled: usize,
-};
 
 /// Recieves TCP packet from socket
 /// Allocates packet buffer of needed size
 /// packet buffer needs to be freed manualy
 /// Use only if server closes connection after sending data
-pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
+pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!TLSpacket {
     const bufsize = 512;
     var buffer: []u8 = try alloc.alloc(u8, bufsize);
     var recv: i32 = undefined;
@@ -94,14 +95,11 @@ pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
         0x15 => {
             std.debug.print("error: Recieved packet is an alert! (", .{});
             switch(buffer[5]) {
-                1 => std.debug.print("warning", .{}),
-                2 => {
-                    std.debug.print("fatal", .{});
-                    return error.recievedFatalAlert;
-                },
+                1 => std.debug.print("warning)\n", .{}),
+                2 => std.debug.print("fatal)\n", .{}),
                 else => unreachable,
             }
-            std.debug.print(")\nerror: alert description is \"", .{});
+            std.debug.print("error: alert description is \"", .{});
             switch(buffer[6]){
                 0   => std.debug.print("Close notify", .{}),
                 10  => std.debug.print("Unexpected message", .{}),
@@ -137,10 +135,11 @@ pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
                 else => unreachable,
             }
             std.debug.print("\"\n", .{});
-            return error.recievedWaringAlert;
+            return error.recievedAlert;
         },
         // Handshake record
-        0x16 => std.log.debug("recieved handshake record", .{}),
+        0x16 => //std.log.debug("recieved handshake record", .{}),
+        {},
         // Application Data
         0x17 => {
             std.log.debug("recieved application data", .{});
@@ -168,25 +167,11 @@ pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
     // Handle protocol version
     var version: u16 = @intCast(u16, buffer[2]) | @intCast(u16, buffer[1]) << 8;
     switch (version) {
-        0x0300 => {
-            std.log.debug("Packet Uses SSL 3.0", .{});
-            return error.Unsupported_TLS_Version;
-        },
-        0x0301 => {
-            std.log.debug("Packet Uses TLS 1.0", .{});
-            return error.Unsupported_TLS_Version;
-        },
-        0x0302 => {
-            std.log.debug("Packet Uses TLS 1.1", .{});
-            return error.Unsupported_TLS_Version;
-        },
-        0x0303 => {
-            std.log.debug("Packet Uses TLS 1.2", .{});
-        },
-        0x0304 => {
-            std.log.debug("Packet Uses TLS 1.3", .{});
-            return error.Unsupported_TLS_Version;
-        },
+        0x0300 => return error.SSL30_is_unsupported,
+        0x0301 => return error.TLS10_is_unsupported,
+        0x0302 => return error.TLS11_is_unsupported,
+        0x0303 => {},
+        0x0304 => return error.TLS13_is_unsupported,
         else => unreachable,
     }
 
@@ -199,9 +184,16 @@ pub fn tlsRecieve(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!packet {
         if (recv == 0) return error.Connection_Closed;
         if (recv == -1) return error.recv_failed;
         recieved += @intCast(usize, recv);
-        if (recieved >= packet_size) return packet {
+        if (recieved >= packet_size) return TLSpacket {
             .buffer = buffer,
             .filled = packet_size,
+            .type = switch (buffer[5]) {
+                0x02 => packetType.ServerHello,
+                0x0B => packetType.Certificate,
+                0x0C => packetType.ServerKey,
+                0x0E => packetType.ServerHelloDone,
+                else => packetType.Undefined,
+            }
         };
     }
 }
@@ -266,6 +258,7 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     filled += 1;
     data[filled] = 0x00;
     filled += 1;
+
     // Extensions Length
     // Extensions
     // Filling sizes
@@ -300,7 +293,7 @@ pub fn showMem(slice: []u8, note: []const u8) void {
     std.debug.print("debug: Examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
     var i: usize = 0;
     while (i < slice.len) : (i += 1) {
-        if (i % 16 == 0) {
+        if (i % 32 == 0) {
             std.debug.print("\n{X:0>16}: ", .{@ptrToInt(&slice[i])});
         }
         std.debug.print(" {X:0>2}", .{slice[i]});
