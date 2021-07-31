@@ -56,22 +56,21 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     }
     std.log.debug("Connected to {s} on port {s}", .{hostname, port});
 
-    // var file: []u8 = openfile();
-    // showMem(file, "Opened file");
     var request: []u8 = try createClientHello(alloc);
     showMem(request, "Generated packet");
-
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
         std.log.err("Error while sending: {d}", .{ws.WSAGetLastError()});
         return error.sendFailed;
     }
     std.log.debug("Sent packet", .{});
+    alloc.free(request);
 
     var answer: TLSpacket = undefined;
     while (answer.type != packetType.ServerHelloDone) {
         answer = try tlsRecievePacket(sock, alloc);
         std.log.debug("Recieved {any}", .{answer.type});
         showMem(answer.buffer[0..answer.filled], "Packet contents");
+        alloc.free(answer.buffer);
     }
     // return dummy number for now ha
     return 0;
