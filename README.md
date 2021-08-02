@@ -4,7 +4,7 @@ Windows-only because of WinSock2 but could be ported to linux or macos.
 Uses only Zig Standard Library.
 
 Currently this code is able to send simple clienthello to server and recieve tls protocol packets. Nothing more at the moment.\
-Made this project just to learn [Zig language](https://ziglang.org/), wich I like a lot.
+Made this project just to learn [Zig Programming Language](https://ziglang.org/), wich I like a lot.
 
 Should be easily buildable with ZIG 0.8 or later using `zig build` command.\
 You can download ZIG compiler by [this link](https://ziglang.org/download/).\
