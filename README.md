@@ -1,5 +1,5 @@
 # HS-Bot
-Windows-only but could be ported to linux or macos.
+Windows-only because of WinSock2 but could be ported to linux or macos.
 
 Uses only Zig Standard Library.
 
