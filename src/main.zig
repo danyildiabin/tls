@@ -6,7 +6,7 @@ pub fn main() anyerror!void {
     _ = try std.os.windows.WSAStartup(2, 2);
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
-    var TLShandle: usize = try initTLS("google.com", &gpa.allocator);
+    var TLShandle: usize = try initTLS("www.wikipedia.org", &gpa.allocator);
     _ = TLShandle;
     _ = try std.os.windows.WSACleanup();
 }
@@ -134,6 +134,7 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!TLS
                 else => unreachable,
             }
             std.debug.print("\"\n", .{});
+            alloc.free(buffer);
             return error.recievedAlert;
         },
         // Handshake record
@@ -239,10 +240,10 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     filled += 1;
     // Cipher Suites
     const cipher_suites = [_]u16{
-        0xcca8, 0xcca9, 0xc02f, 0xc030,
+        0x009f, 0x009e, 0xc02c, 0xc02b,
         0xc02b, 0xc02c, 0xc013, 0xc009,
         0xc014, 0xc00a, 0x009c, 0x009d,
-        0x002f, 0x0035, 0xc012, 0x000a,
+        0x002f, 0x0035, 0xc012, 0x00a2,
         };
     data = try alloc.realloc(data, filled + 2 + @sizeOf(@TypeOf(cipher_suites)));
     std.mem.copy(u8, data[filled..data.len], intToBytes(u16, @sizeOf(@TypeOf(cipher_suites))));
@@ -293,7 +294,7 @@ pub fn showMem(slice: []u8, note: []const u8) void {
     var i: usize = 0;
     while (i < slice.len) : (i += 1) {
         if (i % 32 == 0) {
-            std.debug.print("\n{X:0>16}: ", .{@ptrToInt(&slice[i])});
+            std.debug.print("\n{X:0>16}:", .{@ptrToInt(&slice[i])});
         }
         std.debug.print(" {X:0>2}", .{slice[i]});
     }
