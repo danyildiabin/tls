@@ -1,0 +1,3 @@
+# HS-Bot
+Initialy this project meant to be discord bot for private server written in ZIG.
+Now it's undone TLS 1.2 implementation...
