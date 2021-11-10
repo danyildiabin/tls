@@ -1,5 +1,5 @@
 # HS-Bot
-Windows-only because of WinSock2 but could be ported to linux or macos.
+Windows-only because of WinSock2. Can  easily be ported to linux or macos.
 
 Uses only Zig Standard Library.
 
@@ -10,7 +10,7 @@ Should be easily buildable with ZIG 0.8 or later using `zig build` command.\
 You can download ZIG compiler by [this link](https://ziglang.org/download/).\
 Make sure you added it to PATH before running this command.
 
-If you'd like to develop this thing with me or have any questions feel free to contact me on danyildiabin@ukr.net or submit an issue on this repository.
+If you'd like to develop this thing with me or have any questions feel free to submit an issue on this repository.
 
 # Some great resources to learn TLS protocol
 [Visual bit-precise representation of TLS handshake and data transport](https://tls.ulfheim.net/).\
