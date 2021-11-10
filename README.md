@@ -1,4 +1,4 @@
-# HS-Bot
+#  TLS-experiments
 Windows-only because of WinSock2. Can  easily be ported to linux or macos.
 
 Uses only Zig Standard Library.
