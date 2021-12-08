@@ -2,11 +2,13 @@ const std = @import("std");
 const allocator = std.mem.Allocator;
 const ws = std.os.windows.ws2_32;
 
+pub const debug = @import("debug.zig");
+
 pub fn main() anyerror!void {
     _ = try std.os.windows.WSAStartup(2, 2);
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
-    var TLShandle: usize = try initTLS("www.wikipedia.org", &gpa.allocator);
+    var TLShandle: usize = try initTLS("wikipedia.org", &gpa.allocator);
     _ = TLShandle;
     _ = try std.os.windows.WSACleanup();
 }
@@ -57,7 +59,7 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     std.log.debug("Connected to {s} on port {s}", .{hostname, port});
 
     var request: []u8 = try createClientHello(alloc);
-    showMem(request, "Generated packet");
+    debug.showMem(request, "Generated packet");
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
         std.log.err("Error while sending: {d}", .{ws.WSAGetLastError()});
         return error.sendFailed;
@@ -69,7 +71,7 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     while (answer.type != packetType.ServerHelloDone) {
         answer = try tlsRecievePacket(sock, alloc);
         std.log.debug("Recieved {any}", .{answer.type});
-        showMem(answer.buffer[0..answer.filled], "Packet contents");
+        debug.showMem(answer.buffer[0..answer.filled], "Packet contents");
         alloc.free(answer.buffer);
     }
     // return dummy number for now ha
@@ -90,7 +92,7 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!TLS
     if (recv == -1) return error.recv_failed;
     // Handle packet type
     switch (buffer[0]) {
-        // Alert Record
+        // Alert packet
         0x15 => {
             std.debug.print("error: Recieved packet is an alert! (", .{});
             switch(buffer[5]) {
@@ -134,25 +136,25 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!TLS
                 else => unreachable,
             }
             std.debug.print("\"\n", .{});
-            alloc.free(buffer);
-            return error.recievedAlert;
+            // alloc.free(buffer);
+            // return error.recievedAlert;
         },
-        // Handshake record
+        // Handshake packet
         0x16 => //std.log.debug("recieved handshake record", .{}),
         {},
-        // Application Data
+        // Data packet
         0x17 => {
             std.log.debug("recieved application data", .{});
             // return recieved packet as slice
             return error.Cannot_Handle_Packet_Type;
         },
-        // ChangeCipherSpec
+        // ChangeCipherSpec packet
         0x14 => {
             std.log.debug("recieved ChangeCipherSpec", .{});
             // return recieved packet as slice
             return error.Cannot_Handle_Packet_Type;
         },
-        // HeartBeat
+        // Heartbeat packet
         0x18 => {
             std.log.debug("recieved ChangeCipherSpec", .{});
             // return error?
@@ -198,76 +200,105 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!TLS
     }
 }
 
-pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
-    var filled: usize = 0;
-    var data: []u8 = undefined;
 
+
+pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
+    // Lengths
+    const essentials_len: usize = 44;
+    var cipher_suites_len: usize = 0;
+    var compressions_len: usize = 0;
+    var extensions_len: usize = 0;
+    var filled: usize = 0;
     // Packet type is handshake
-    data = try alloc.alloc(u8, 1);
+    var data = try alloc.alloc(u8, essentials_len);
     data[filled] = 0x16;
     filled += 1;
     // TLS version
-    data = try alloc.realloc(data, filled+2);
     std.mem.copy(u8, data[filled..data.len], intToBytes(u16, 0x0301));
     filled += 2;
     // allocate space for folowing bytes count
-    data = try alloc.realloc(data, filled+2);
     filled += 2;
 
     // Handshake Header
     // Handshake type code is client hello
-    data = try alloc.realloc(data, filled+1);
     data[filled] = 0x01;
     filled += 1;
     // allocate space for following bytes count
-    data = try alloc.realloc(data, filled+3);
     filled += 3;
 
     // Client Version
-    data = try alloc.realloc(data, filled+2);
     std.mem.copy(u8, data[filled..data.len], intToBytes(u16, 0x0303));
     filled += 2;
+
     // Client Random
-    data = try alloc.realloc(data, filled+32);
     var rng = std.rand.DefaultPrng.init(@intCast(u64, std.time.timestamp()));
     for (data[filled..data.len]) |*pointer| {
         pointer.* = rng.random.int(u8);
     }
     filled += 32;
+
     // Session ID
-    data = try alloc.realloc(data, filled+1);
-    data[filled] = 0x00;
-    filled += 1;
-    // Cipher Suites
-    const cipher_suites = [_]u16{
-        0x009f, 0x009e, 0xc02c, 0xc02b,
-        0xc02b, 0xc02c, 0xc013, 0xc009,
-        0xc014, 0xc00a, 0x009c, 0x009d,
-        0x002f, 0x0035, 0xc012, 0x00a2,
-        };
-    data = try alloc.realloc(data, filled + 2 + @sizeOf(@TypeOf(cipher_suites)));
-    std.mem.copy(u8, data[filled..data.len], intToBytes(u16, @sizeOf(@TypeOf(cipher_suites))));
-    filled += 2;
-    for (cipher_suites) |suite| {
-        std.mem.copy(u8, data[filled..data.len], intToBytes(u16, suite));
-        filled += 2;
-    }
-    // Compression Methods
-    data = try alloc.realloc(data, filled+2);
-    data[filled] = 0x01;
-    filled += 1;
     data[filled] = 0x00;
     filled += 1;
 
-    // Extensions Length
+    // Cipher Suites
+    const cipher_suites = [_]u16 {
+        0xcca8, 0xcca9, 0xc02f, 0xc030,
+        0xc030, 0xc02b, 0xc02c, 0xc013
+        };
+    cipher_suites_len = 2 + cipher_suites.len * 2;
+    data = try alloc.realloc(data, filled + cipher_suites_len);
+    std.mem.copy(u8, data[filled..filled+2], intToBytes(u16, @intCast(u16, cipher_suites.len*2)));
+    filled += 2;
+    for (cipher_suites) |suite| {
+        std.mem.copy(u8, data[filled..filled+2], intToBytes(u16, suite));
+        filled += 2;
+    }
+
+    // Compression Methods
+    compressions_len += 2;
+    data = try alloc.realloc(data, filled + compressions_len);
+    // Size of compression algos
+    data[filled] = 0x01;
+    filled += 1;
+    // Compression algos
+    // 0 == none
+    data[filled] = 0x00;
+    filled += 1;
+
     // Extensions
+    // allocate space for extensions size
+    data = try alloc.realloc(data, filled + 2);
+    filled += 2;
+
+    // var extension_server_name: []u8 = (try debug.hexStringToSlice(alloc, "0000000F000D00000A676f6f676c652e636f6d"));
+    // data = try alloc.realloc(data, filled + extension_server_name.len);
+    // std.mem.copy(u8, data[filled..filled+extension_server_name.len], extension_server_name);
+    // filled += extension_server_name.len;
+    // alloc.free(extension_server_name);
+    // extensions_len += extension_server_name.len;
+
+    // var extension_status_request: []u8 = (try debug.hexStringToSlice(alloc, "000500050100000000"));
+    // data = try alloc.realloc(data, filled + extension_status_request.len);
+    // std.mem.copy(u8, data[filled..filled+extension_status_request.len], extension_status_request);
+    // filled += extension_status_request.len;
+    // alloc.free(extension_status_request);
+    // extensions_len += extension_status_request.len;
+
+    var extension_supported_groups: []u8 = (try debug.hexStringToSlice(alloc, "000a000a0008001d001700180019"));
+    data = try alloc.realloc(data, filled + extension_supported_groups.len);
+    std.mem.copy(u8, data[filled..filled+extension_supported_groups.len], extension_supported_groups);
+    filled += extension_supported_groups.len;
+    alloc.free(extension_supported_groups);
+    extensions_len += extension_supported_groups.len;
+
     // Filling sizes
     // Record Header
     std.mem.copy(u8, data[3..5], intToBytes(u16, @intCast(u16, data.len-5)));
     // Handshake Header
-    std.mem.copy(u8, data[5..9], intToBytes(u32, @intCast(u32, data.len-5-4) & 0x00ffffff | @intCast(u32, data[5]) << @intCast(std.math.Log2Int(u32),3*8))
-    );
-
+    std.mem.copy(u8, data[5..9], intToBytes(u32, @intCast(u32, data.len-5-4) & 0x00ffffff | @intCast(u32, data[5]) << @intCast(std.math.Log2Int(u32),3*8)));
+    // Extensions Length
+    std.mem.copy(u8, data[essentials_len+cipher_suites_len+compressions_len..essentials_len+cipher_suites_len+compressions_len+2], intToBytes(u16, @intCast(u16, extensions_len)));
     return data;
 }
 
@@ -278,25 +309,4 @@ pub fn intToBytes(comptime T: type, num: T) []u8 {
         result[(@sizeOf(T)-1)-i] = @intCast(u8, (num >> @intCast(std.math.Log2Int(T), i*8)) & 0xFF);
     }
     return result[0..];
-}
-
-pub fn openfile() []u8 {
-    var buffer: [116]u8 = undefined;
-    if (std.c.fopen("C:/Users/Danyil/Development/Discord/HS Bot/zig-out/bin/packet.bin", "r")) |file| {
-        _ = std.c.fread(@ptrCast([*]u8, &buffer[0]), 116, 1, file);
-        std.log.info("Successfuly read packet file", .{});
-    }
-    return buffer[0..];
-}
-
-pub fn showMem(slice: []u8, note: []const u8) void {
-    std.debug.print("debug: Examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
-    var i: usize = 0;
-    while (i < slice.len) : (i += 1) {
-        if (i % 32 == 0) {
-            std.debug.print("\n{X:0>16}:", .{@ptrToInt(&slice[i])});
-        }
-        std.debug.print(" {X:0>2}", .{slice[i]});
-    }
-    std.debug.print("\n", .{});
 }
