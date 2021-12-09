@@ -1,3 +1,9 @@
+pub const Record = struct {
+    type: ContentType,
+    version: Version,
+    data: []u8,
+};
+
 pub const ContentType = enum (u8) {
     invalid = 0,
     change_cipher_spec = 20,
