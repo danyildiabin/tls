@@ -33,35 +33,34 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     defer _ = ws.closesocket(sock);
 
     if (sock == ws.INVALID_SOCKET) {
-        std.log.err("Socket creation failed", .{});
+        std.log.err("socket creation failed", .{});
         return error.socketCreationFailed;
     } else {
-        std.log.debug("Created socket", .{});
+        std.log.debug("created socket", .{});
     }
 
     if (ws.connect(sock, @ptrCast(*const ws.sockaddr, res.*.addr), @intCast(i32, res.*.addrlen)) != 0) {
-        std.log.err("Connection to {s} on port {s} failed!", .{hostname, port});
+        std.log.err("connection to {s} on port {s} failed!", .{hostname, port});
         return error.connectFailed;
     } else {
-        std.log.debug("Connected to {s} on port {s}", .{hostname, port});
+        std.log.debug("connected to {s} on port {s}", .{hostname, port});
     }
 
     var request: []u8 = try createClientHello(alloc);
     defer alloc.free(request);
     debug.showMem(request, "Generated packet");
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
-        std.log.err("Error while sending: {d}", .{ws.WSAGetLastError()});
+        std.log.err("srror while sending: {d}", .{ws.WSAGetLastError()});
         return error.sendFailed;
     } else {
-        std.log.debug("Sent packet", .{});
+        std.log.debug("sent client_hello", .{});
     }
 
     var answer: tls.Record = undefined;
     while (true) {
         answer = try tlsRecievePacket(sock, alloc);
         defer alloc.free(answer.data);
-        std.log.debug("Recieved {any}", .{answer.type});
-        debug.showMem(answer.data, "Packet contents");
+        debug.showMem(answer.data, "packet contents");
         if (@intToEnum(tls.HandshakeType, answer.data[5]) == tls.HandshakeType.server_hello_done) break;
     }
     return 0;
@@ -88,19 +87,22 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!tls
             var alert_description: tls.AlertDescription = @intToEnum(tls.AlertDescription, recv_buffer[6]);
             switch (alert_level) {
                 .warning => {
-                    std.log.warn("Recieved a warning alert! {any}", .{alert_description});
+                    std.log.warn("recieved a warning alert! {any}", .{alert_description});
                     return error.recieved_warning_alert;
-                };
+                },
                 .fatal => {
-                    std.log.warn("Recieved a fatal alert! {any}", .{alert_description});
+                    std.log.err("recieved a fatal alert! {any}", .{alert_description});
                     return error.recieved_fatal_alert;
-                };
+                },
                 else => return error.unrecognized_alert_level
             }
         },
-        .handshake => {std.log.debug("handshake type is {any}", .{@intToEnum(tls.HandshakeType, recv_buffer[5])});},
+        .handshake => {},
+        .heartbeat => {},
+        .application_data => {},
+        .change_cipher_spec => {},
         else => {
-            std.log.err("Recieved {any}", .{result.type});
+            std.log.err("recieved unrecognised content type. {any}", .{result.type});
             return error.unrecognized_content_type;
         }
     }

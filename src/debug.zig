@@ -27,11 +27,12 @@ pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror!
 
 // Prints slice as hex code to console with note about slice content
 pub fn showMem(slice: []u8, note: []const u8) void {
-    std.debug.print("debug: Examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
+    std.log.debug("examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
     var i: usize = 0;
     while (i < slice.len) : (i += 1) {
         if (i % 32 == 0) {
-            std.debug.print("\n{X:0>16}:", .{@ptrToInt(&slice[i])});
+            if (i != 0) std.debug.print("\n", .{});
+            std.debug.print("{X:0>16}:", .{@ptrToInt(&slice[i])});
         }
         std.debug.print(" {X:0>2}", .{slice[i]});
     }
