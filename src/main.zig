@@ -1,24 +1,18 @@
 const std = @import("std");
+const debug = @import("debug.zig");
+const tls = @import("constants.zig");
+
 const allocator = std.mem.Allocator;
 const ws = std.os.windows.ws2_32;
-
-pub const debug = @import("debug.zig");
-pub const tls = @import("constants.zig");
 
 pub fn main() anyerror!void {
     _ = try std.os.windows.WSAStartup(2, 2);
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
-    var TLShandle: usize = initTLS("wikipedia.org", &gpa.allocator) catch 0;
+    var TLShandle: usize = initTLS("google.com", &gpa.allocator) catch 0;
     _ = TLShandle;
     _ = try std.os.windows.WSACleanup();
 }
-
-const tls_packet = struct {
-    type: tls.ContentType,
-    version: tls.Version,
-    data: []u8,
-};
 
 pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usize {
     const port = "443";
@@ -32,7 +26,6 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
         .addr = null,
         .next = null,
     };
-
     var res: *ws.addrinfo = undefined;
     _ = ws.getaddrinfo(hostname, port, &hints, &res);
 
@@ -63,7 +56,7 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
         std.log.debug("Sent packet", .{});
     }
 
-    var answer: tls_packet = undefined;
+    var answer: tls.Record = undefined;
     while (true) {
         answer = try tlsRecievePacket(sock, alloc);
         defer alloc.free(answer.data);
@@ -78,8 +71,8 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 /// Allocates packet buffer of needed size
 /// packet buffer needs to be freed manualy
 /// Use only if server closes connection after sending data
-pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!tls_packet {
-    var result: tls_packet = undefined;
+pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!tls.Record {
+    var result: tls.Record = undefined;
     const recv_bufsize = 1024;
     var recv_buffer: []u8 = try alloc.alloc(u8, recv_bufsize);
     defer alloc.free(recv_buffer);
@@ -91,27 +84,32 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!tls
     // Handle packet type
     switch (result.type) {
         .alert => {
-            std.log.err("error: Recieved packet is an alert! {any} {any}",
-                .{@intToEnum(tls.AlertLevel, recv_buffer[5]), @intToEnum(tls.AlertLevel, recv_buffer[6])}
-            );
-            return error.RecievedAlert;
+            var alert_level: tls.AlertLevel = @intToEnum(tls.AlertLevel, recv_buffer[5]);
+            var alert_description: tls.AlertDescription = @intToEnum(tls.AlertDescription, recv_buffer[6]);
+            switch (alert_level) {
+                .warning => {
+                    std.log.warn("Recieved a warning alert! {any}", .{alert_description});
+                    return error.recieved_warning_alert;
+                };
+                .fatal => {
+                    std.log.warn("Recieved a fatal alert! {any}", .{alert_description});
+                    return error.recieved_fatal_alert;
+                };
+                else => return error.unrecognized_alert_level
+            }
         },
         .handshake => {std.log.debug("handshake type is {any}", .{@intToEnum(tls.HandshakeType, recv_buffer[5])});},
         else => {
             std.log.err("Recieved {any}", .{result.type});
-            return error.ContentTypeNotImplemented;
+            return error.unrecognized_content_type;
         }
     }
 
     // Handle protocol version
     result.version = @intToEnum(tls.Version, (@intCast(u16, recv_buffer[2]) | @intCast(u16, recv_buffer[1]) << 8));
     switch (result.version) {
-        .SSL_3_0 => return error.TLS_version_unimplemented,
-        .TLS_1_0 => return error.TLS_version_unimplemented,
-        .TLS_1_1 => return error.TLS_version_unimplemented,
         .TLS_1_2 => {},
-        .TLS_1_3 => return error.TLS_version_unimplemented,
-        else => return error.unknown_TLS_version,
+        else => return error.unrecognized_tls_version,
     }
 
     var packet_size: u16 = (@intCast(u16, recv_buffer[4]) | @intCast(u16, recv_buffer[3]) << 8) + 5;
