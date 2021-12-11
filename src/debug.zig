@@ -4,6 +4,7 @@ const std = @import("std");
 pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror![]u8 {
     var filled: usize = 0;
     var data: []u8 = try alloc.alloc(u8, string.len >> 1);
+    errdefer alloc.free(data);
     for (string) |char, index| {
         if (index % 2 == 0) {
             
@@ -11,14 +12,14 @@ pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror!
                 '0'...'9' => blk: { break :blk char - 48;},
                 'A'...'F' => blk: { break :blk char - 55;},
                 'a'...'f' => blk: { break :blk char - 87;},
-                else => unreachable
+                else => return error.unsupported_character,
             } << 4;
         } else {
             data[index >> 1] |= switch (char) {
                 '0'...'9' => blk: { break :blk char - 48;},
                 'A'...'F' => blk: { break :blk char - 55;},
                 'a'...'f' => blk: { break :blk char - 87;},
-                else => unreachable
+                else => return error.unsupported_character,
             };
         }
     }

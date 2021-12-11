@@ -9,7 +9,7 @@ pub fn main() anyerror!void {
     _ = try std.os.windows.WSAStartup(2, 2);
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
-    var TLShandle: usize = initTLS("google.com", &gpa.allocator) catch 0;
+    var TLShandle: usize = try initTLS("google.com", &gpa.allocator);
     _ = TLShandle;
     _ = try std.os.windows.WSACleanup();
 }
@@ -48,7 +48,7 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
     var request: []u8 = try createClientHello(alloc);
     defer alloc.free(request);
-    debug.showMem(request, "Generated packet");
+    debug.showMem(request, "generated packet");
     if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
         std.log.err("srror while sending: {d}", .{ws.WSAGetLastError()});
         return error.sendFailed;
@@ -57,10 +57,20 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     }
 
     var answer: tls.Record = undefined;
+    // recieve server answer records
     while (true) {
         answer = try tlsRecievePacket(sock, alloc);
         defer alloc.free(answer.data);
+        if (answer.type != tls.ContentType.handshake) return error.non_handshake_packet_during_handshake;
+        var handshake_type: tls.HandshakeType = @intToEnum(tls.HandshakeType, answer.data[5]);
         debug.showMem(answer.data, "packet contents");
+        switch (handshake_type) {
+            .server_hello => {
+
+            },
+            else => return error.unimplemented_handshake_type,
+        }
+        debug.showMem(answer.data, "recieved packet");
         if (@intToEnum(tls.HandshakeType, answer.data[5]) == tls.HandshakeType.server_hello_done) break;
     }
     return 0;
@@ -94,7 +104,7 @@ pub fn tlsRecievePacket(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!tls
                     std.log.err("recieved a fatal alert! {any}", .{alert_description});
                     return error.recieved_fatal_alert;
                 },
-                else => return error.unrecognized_alert_level
+                else => return error.unrecognized_alert_level,
             }
         },
         .handshake => {},
@@ -174,16 +184,17 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     filled += 1;
 
     // Cipher Suites
-    const cipher_suites = [_]u16 {
-        0xcca8, 0xcca9, 0xc02f, 0xc030,
-        0xc030, 0xc02b, 0xc02c, 0xc013,
+    const cipher_suites = [_]tls.CipherSuite {
+        .TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        .TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        .TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
     };
     cipher_suites_len = 2 + cipher_suites.len * 2;
     data = try alloc.realloc(data, filled + cipher_suites_len);
     std.mem.copy(u8, data[filled..filled+2], intToBytes(u16, @intCast(u16, cipher_suites.len*2)));
     filled += 2;
     for (cipher_suites) |suite| {
-        std.mem.copy(u8, data[filled..filled+2], intToBytes(u16, suite));
+        std.mem.copy(u8, data[filled..filled+2], intToBytes(u16, @enumToInt(suite)));
         filled += 2;
     }
 

@@ -4,6 +4,46 @@ pub const Record = struct {
     data: []u8,
 };
 
+pub const Client = struct {
+    cipher: u16,
+    session_id: Version,
+    compression: []u8,
+
+};
+
+// Formated as IANA names
+// PROTOCOL KEY_EXCHANGE_ALGORITHM DIGITAL_SIGNATURE_ALGORITHM BULK_ENCRYPTION_ALGORITHM HASHING_ALGORITHM
+// List defined here are approved TLS 1.2 Ciphers according to
+// https://comodosslstore.com/resources/ssl-cipher-suites-ultimate-guide/
+// kinda cringe, I know
+
+// ECDHE - Elliptic Curve Diffie-Hellman Ephemeral
+// ECDSA - Elliptic Curve Digital Signature Algorithm
+// GCM - Galois/Counter mode
+// AES - Advanced encryption standard 
+// SHA - Secure Hash Algorithm
+// CBC - Cipher Block Chaining
+// RSA - Rivest Shamir Adleman algorithm
+pub const CipherSuite = enum (u16) {
+    TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02B,       // Recommended
+    TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = 0xC02C,       // Recommended
+    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 = 0xC023,       // Weak
+    TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384 = 0xC024,       // Weak
+    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = 0xC02F,         // Secure
+    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = 0xC030,         // Secure
+    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 = 0xC027,         // Weak
+    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 = 0xC028,         // Weak
+    TLS_DHE_RSA_WITH_AES_128_GCM_SHA256 = 0x009E,           // Secure
+    TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 = 0x009F,           // Secure
+    TLS_DHE_RSA_WITH_AES_128_CBC_SHA = 0x0033,              // Weak
+    TLS_DHE_RSA_WITH_AES_256_CBC_SHA = 0x0039,              // Weak
+    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256 = 0x0067,           // Weak
+    TLS_DHE_RSA_WITH_AES_256_CBC_SHA256 = 0x006B,           // Weak
+    TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = 0xCCA9, // Recommended
+    TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = 0xCCA8,   // Secure
+    _,
+};
+
 pub const ContentType = enum (u8) {
     invalid = 0,
     change_cipher_spec = 20,
