@@ -12,6 +12,33 @@ pub fn main() anyerror!void {
     var TLShandle: usize = try initTLS("google.com", &gpa.allocator);
     _ = TLShandle;
     _ = try std.os.windows.WSACleanup();
+
+
+    // Experimenting with secp256r1 curve cryptology
+    var p: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    var a: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    var b: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    var gx: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    var gy: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    var n: std.math.big.int.Managed = try std.math.big.int.Managed.init(&gpa.allocator);
+    defer p.deinit();
+    defer a.deinit();
+    defer b.deinit();
+    defer gx.deinit();
+    defer gy.deinit();
+    defer n.deinit();
+    try p.setString(16,  "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
+    try a.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try b.setString(16,  "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
+    try gx.setString(16, "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
+    try gy.setString(16, "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5");
+    try n.setString(16,  "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+    std.log.debug("p: {any}", .{p});
+    std.log.debug("a: {any}", .{a});
+    std.log.debug("b: {any}", .{b});
+    std.log.debug("gx: {any}", .{gx});
+    std.log.debug("gy: {any}", .{gy});
+    std.log.debug("n: {any}", .{n});
 }
 
 pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usize {
@@ -63,14 +90,16 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
         defer alloc.free(answer.data);
         if (answer.type != tls.ContentType.handshake) return error.non_handshake_packet_during_handshake;
         var handshake_type: tls.HandshakeType = @intToEnum(tls.HandshakeType, answer.data[5]);
+        std.log.debug("recieved {any}", .{handshake_type});
         debug.showMem(answer.data, "packet contents");
         switch (handshake_type) {
-            .server_hello => {
-
-            },
+            .server_hello => {},
+            .certificate => {},
+            .server_key_exchange => {},
+            .server_hello_done => {},
+            .finished => {},
             else => return error.unimplemented_handshake_type,
         }
-        debug.showMem(answer.data, "recieved packet");
         if (@intToEnum(tls.HandshakeType, answer.data[5]) == tls.HandshakeType.server_hello_done) break;
     }
     return 0;
@@ -186,8 +215,8 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     // Cipher Suites
     const cipher_suites = [_]tls.CipherSuite {
         .TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        .TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        .TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+        // .TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        // .TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
     };
     cipher_suites_len = 2 + cipher_suites.len * 2;
     data = try alloc.realloc(data, filled + cipher_suites_len);
@@ -218,14 +247,14 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
     alloc.free(extension_server_name);
     extensions_len += extension_server_name.len;
 
-    var extension_status_request: []u8 = (try debug.hexStringToSlice(alloc, "000500050100000000"));
-    data = try alloc.realloc(data, filled + extension_status_request.len);
-    std.mem.copy(u8, data[filled..filled+extension_status_request.len], extension_status_request);
-    filled += extension_status_request.len;
-    alloc.free(extension_status_request);
-    extensions_len += extension_status_request.len;
+    // var extension_status_request: []u8 = (try debug.hexStringToSlice(alloc, "000500050100000000"));
+    // data = try alloc.realloc(data, filled + extension_status_request.len);
+    // std.mem.copy(u8, data[filled..filled+extension_status_request.len], extension_status_request);
+    // filled += extension_status_request.len;
+    // alloc.free(extension_status_request);
+    // extensions_len += extension_status_request.len;
 
-    var extension_supported_groups: []u8 = (try debug.hexStringToSlice(alloc, "000a000a0008001d001700180019"));
+    var extension_supported_groups: []u8 = (try debug.hexStringToSlice(alloc, "000a000400020017"));
     data = try alloc.realloc(data, filled + extension_supported_groups.len);
     std.mem.copy(u8, data[filled..filled+extension_supported_groups.len], extension_supported_groups);
     filled += extension_supported_groups.len;
