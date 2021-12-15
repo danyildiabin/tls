@@ -16,4 +16,7 @@ If you'd like to develop this thing with me or have any questions feel free to s
 [Visual bit-precise representation of TLS handshake and data transport](https://tls.ulfheim.net/).\
 [Wiki page](https://en.wikipedia.org/wiki/Transport_Layer_Security), more formal source to understand the protocol.\
 [TLS 1.2](https://www.rfc-editor.org/rfc/rfc5246.html) and [TLS 1.3](https://www.rfc-editor.org/rfc/rfc8446.html) standard drafts. I find them hard-to-understand but they define how all servers/clients should work.
-[Nice article about ciphers](https://comodosslstore.com/resources/ssl-cipher-suites-ultimate-guide/)
+[Random article about ciphers in use](https://comodosslstore.com/resources/ssl-cipher-suites-ultimate-guide)
+
+[GREAT Article about eliptic curves](https://cryptobook.nakov.com/asymmetric-key-ciphers/elliptic-curve-cryptography-ecc)
+Use with [Standard curve database](https://neuromancer.sk/std/secg/secp256r1)
