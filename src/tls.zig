@@ -53,50 +53,185 @@ pub fn sendRecord(alloc: *std.mem.Allocator, sock: ws.SOCKET, record: Record) an
     if (res == -1) return error.SendFailed;
     if (res == 0) return error.ConnectionClosed;
 
-    debug.showMem(record.data[0..record.data.len], "about to send this shit");
-
     res = ws.send(sock, record.data.ptr, @intCast(i32, record.data.len), 0);
     if (res == -1) return error.SendFailed;
     if (res == 0) return error.ConnectionClosed;
 }
 
-pub fn parseHandshakeRecord(data: []u8) anyerror!HandshakeHeader {
-    // TODO use all 3 bytes for size calculation
-    var size = @intCast(u16, recv_buffer[3]) | @intCast(u16, recv_buffer[2]) << 8;
-    if (size >= (0xFFFF-5)) return error.decode_error_bad_message_size;
-    return struct {
-        type: @intToEnum(HandshakeType, data[0]),
-        data: data[4..],
-    };
-}
+pub fn printRecord(record: Record) anyerror!void {
+    // std.debug.print("\n=====> TLS Record\n", .{});
+    std.debug.print("Type is {}\n", .{record.type});
+    std.debug.print("Version is {}\n", .{record.version});
+    // std.debug.print("Record size is {} bytes\n", .{record.data.len});
+    switch (record.type) {
+        .handshake => {
+            // std.debug.print("===== Handshake Header =====\n", .{});
+            const handshake_type = @intToEnum(HandshakeType, record.data[0]);
+            std.debug.print("Handshake type is {}\n", .{handshake_type});
+            const size = @intCast(u64, record.data[1]) << 16 | @intCast(u64, record.data[2]) << 8 | @intCast(u64, record.data[3]);
+            std.debug.print("Handshake size is {} bytes\n", .{size});
+            var reading: usize = 4;
+            switch(handshake_type) {
+                // TODO finish client_hello
+                .client_hello => {
+                    const version = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                    reading += 2;
+                    std.debug.print("Protocol version is {}\n", .{@intToEnum(Version, version)});
+                    std.debug.print("Client random is 0x", .{});
+                    for (record.data[reading..reading+32]) |byte| {
+                        std.debug.print("{X:0>2}", .{byte});
+                    }
+                    reading += 32;
+                    std.debug.print("\nSession ID is ", .{});
+                    if (record.data[reading] == 0) {
+                        std.debug.print("not provided", .{});
+                        reading += 1;
+                    } else {
+                        std.debug.print("0x", .{});
+                        for (record.data[reading+1..reading+1+record.data[reading]]) |byte| {
+                            std.debug.print("{X:0>2}", .{byte});
+                        }
+                        reading += 1 + record.data[reading];
+                    }
+                    const ciphersuites_n = (@intCast(u16, record.data[reading]) << 8 | record.data[reading+1]) >> 1;
+                    std.debug.print("\nProposed {d} ciphersuites:\n", .{ciphersuites_n});
+                    reading += 2;
+                    // TODO this function reverses byteorder of u16 to littleEndian, it should not
+                    var ciphersuites = std.mem.bytesAsSlice(u16, record.data[reading..reading+ciphersuites_n*2]);
+                    for (ciphersuites) |word| {
+                        std.debug.print("{}\n", .{@intToEnum(CipherSuite, ((0x00ff & word) << 8) | ((0xff00 & word) >> 8))});
+                    }
+                    reading += ciphersuites_n*2;
+                    // TODO add compressions enum
+                    const compression_n = record.data[reading];
+                    std.debug.print("Proposed {d} compression algorithms:\n", .{compression_n});
+                    reading += 1;
+                    for (record.data[reading..reading+compression_n]) |byte| {
+                        std.debug.print("0x{X:0>2}\n", .{byte});
+                    }
+                    reading += compression_n;
 
-pub fn parseClientHello(data: []u8) anyerror!ClientHelloRecord {
-    var result: ClientHelloRecord = undefined;
-    var reading: usize = 0;
-    result.version = @intToEnum(Version, (@intCast(u16, data[reading+1]) | @intCast(u16, data[reading]) << 8));
-    reading += 2;
-    result.client_random = data[reading..reading+32];
-    reading += 32;
-    std.log.debug("{X:0>2}", .{data[reading]});
-    if (data[reading] == 0) {
-        result.session_id = null;
-        reading += 1;
-    } else {
-        result.session_id = data[reading+1..reading+1+data[reading]];
-        reading += (1+data[reading]);
+                    if (reading == record.data.len) {
+                        std.debug.print("Extensions are not provided\n", .{});
+                    } else {
+                        const extensions_size = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                        std.debug.print("Extensions size is {d} bytes\n", .{extensions_size});
+                        reading += 2;
+                        while (true) {
+                            const extension = @intToEnum(ExtensionType, @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]));
+                            reading += 2;
+                            const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                            reading += 2;
+                            //TODO implement something to show extension info
+                            reading += extensionsize;
+                            std.debug.print("Extension: {}, size is {d} bytes\n", .{extension, extensionsize});
+                            if (reading == record.data.len) break;
+                        }
+                    }
+                },
+                .server_hello => {
+                    const version = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                    reading += 2;
+                    std.debug.print("Protocol version is {}\n", .{@intToEnum(Version, version)});
+                    std.debug.print("Server random is 0x", .{});
+                    for (record.data[reading..reading+32]) |byte| {
+                        std.debug.print("{X:0>2}", .{byte});
+                    }
+                    reading += 32;
+                    std.debug.print("\nSession ID is ", .{});
+                    if (record.data[reading] == 0) {
+                        std.debug.print("not provided", .{});
+                        reading += 1;
+                    } else {
+                        std.debug.print("0x", .{});
+                        for (record.data[reading+1..reading+1+record.data[reading]]) |byte| {
+                            std.debug.print("{X:0>2}", .{byte});
+                        }
+                        reading += 1 + record.data[reading];
+                    }
+                    const ciphersuite = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                    std.debug.print("\nSelected ciphersuite is {}\n", .{@intToEnum(CipherSuite, ciphersuite)});
+                    reading += 2;
+                    // TODO add compressions enum
+                    std.debug.print("Selected compression method is 0x{X:0>2}\n", .{record.data[reading]});
+                    reading += 1;
+                    if (reading == record.data.len) {
+                        std.debug.print("Extensions are not provided\n", .{});
+                    } else {
+                        const extensions_size = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                        std.debug.print("Extensions size is {d} bytes\n", .{extensions_size});
+                        reading += 2;
+                        while (true) {
+                            const extension = @intToEnum(ExtensionType, @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]));
+                            reading += 2;
+                            const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading+1]);
+                            reading += 2;
+                            //TODO implement something to show extension info
+                            reading += extensionsize;
+                            std.debug.print("Extension: {}, size is {d} bytes\n", .{extension, extensionsize});
+                            if (reading == record.data.len) break;
+                        }
+                    }
+                },
+                .certificate => {
+                    const combined_size: u64 = @intCast(u64, record.data[reading]) << 16 | @intCast(u64, record.data[reading+1]) << 8 | record.data[reading+2];
+                    std.debug.print("All certificates with size headers is {d} bytes\n", .{combined_size});
+                    reading += 3;
+                    var certificate_n: usize = 0;
+                    while (true) {
+                        certificate_n += 1;
+                        const cert_size: u64 = @intCast(u64, record.data[reading]) << 16 | @intCast(u64, record.data[reading+1]) << 8 | record.data[reading+2];
+                        std.debug.print("Certificate #{d} is {d} bytes long\n", .{certificate_n, cert_size});
+                        reading += 3 + cert_size;
+                        if (reading == record.data.len) break;
+                    }
+                },
+                .server_key_exchange => {
+                    const curve_type = @intToEnum(ECCurveType, record.data[reading]);
+                    std.debug.print("Curve type is {}\n", .{curve_type});
+                    reading += 1;
+                    const curve = @intToEnum(EllipticCurve, @intCast(u16, record.data[reading]) << 8 | record.data[reading+1]);
+                    std.debug.print("Selected curve is {}\n", .{curve});
+                    reading += 2;
+                    const keysize = record.data[reading];
+                    std.debug.print("PublicKey size is {} bytes\n", .{keysize});
+                    reading += 1;
+                    std.debug.print("Public Key is 0x", .{});
+                    for (record.data[reading..reading+keysize]) |byte| {
+                        std.debug.print("{X:0>2}", .{byte});
+                    }
+                    reading += keysize;
+                    std.debug.print("\nHashing algorithm is {}\n", .{@intToEnum(HashAlgorithm, record.data[reading])});
+                    std.debug.print("Signature algorithm is {}\n", .{@intToEnum(SignatureAlgorithm, record.data[reading+1])});
+                    reading += 2;
+                    const signature_size = @intCast(u16, record.data[reading]) << 8 | record.data[reading+1];
+                    std.debug.print("Signature size is {d} bytes\n", .{signature_size});
+                    reading += 2;
+                    std.debug.print("Signature is 0x", .{});
+                    for (record.data[reading..reading+signature_size]) |byte| {
+                        std.debug.print("{X:0>2}", .{byte});
+                    }
+                    std.debug.print("\n", .{});
+                },
+                .server_hello_done => {},
+                .certificate_status => {
+                    std.debug.print("certificate_status debug info unimplemented\n", .{});
+                },
+                // TODO implement certificate status info
+                else => return error.unsupported_handshake_type,
+                // debug.showMem(record.data, "printed record");
+            }
+        },
+        .alert => {
+            std.debug.print("Alert type is {}\n", .{@intToEnum(AlertLevel, record.data[0])});
+            std.debug.print("Alert description: {}\n", .{@intToEnum(AlertDescription, record.data[1])});
+        },
+        .change_cipher_spec => {},
+        .application_data => {},
+        .heartbeat => {},
+        else => return error.unsupported_record_type,
     }
-    var cipher_count = @intCast(u16, data[reading+1]) | @intCast(u16, data[reading]) << 8;
-    result.cipher_suites = @ptrCast([*]u16, @alignCast(@alignOf([*]u16), data[reading+2..reading+2+cipher_count*2]))[0..cipher_count];
-    reading += (2+cipher_count*2);
-    if (data[reading] == 1 and data[reading+1] == 0) {
-        result.compression_methods = null;
-        reading += 2;
-    } else {
-        result.compression_methods = data[reading+1..reading+1+data[reading]];
-        reading += (1+data[reading]);
-    }
-    result.extensions = null;
-    return result;
+    std.debug.print("\n", .{});
 }
 
 pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usize {
@@ -131,33 +266,28 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
         std.log.debug("connected to {s} on port {s}", .{hostname, port});
     }
 
-    var request: []u8 = try createClientHello(alloc);
-    defer alloc.free(request);
-    debug.showMem(request, "generated packet");
-    // var hello_record: ClientHelloRecord = try parseClientHello(request[5+4..request.len]);
-    // std.log.debug("{}", .{hello_record});
-    if (ws.send(sock, @ptrCast([*]const u8, &request[0]), @intCast(i32, request.len), 0) == ws.SOCKET_ERROR) {
-        std.log.err("srror while sending: {d}", .{ws.WSAGetLastError()});
-        return error.sendFailed;
-    } else {
-        std.log.debug("sent client_hello", .{});
-    }
+    var client_hello = try createClientHello(alloc);
+    defer alloc.free(client_hello.data);
+    std.log.debug("===> Sent to server", .{});
+    try printRecord(client_hello);
+    try sendRecord(alloc, sock, client_hello);
 
     var answer: Record = undefined;
     // recieve server answer records
     while (true) {
         answer = try recieveRecord(sock, alloc);
         defer alloc.free(answer.data);
+        std.log.debug("===> Recieved from server", .{});
+        try printRecord(answer);
         if (answer.type != ContentType.handshake) return error.non_handshake_packet_during_handshake;
         var handshake_type = @intToEnum(HandshakeType, answer.data[0]);
-        std.log.debug("recieved {}", .{handshake_type});
-        debug.showMem(answer.data[0..answer.data.len], "packet contents");
         switch (handshake_type) {
             .server_hello => {},
             .certificate => {},
             .server_key_exchange => {},
             .server_hello_done => {},
             .finished => {},
+            .certificate_status => {},
             else => return error.unexpected_message,
         }
         if (handshake_type == HandshakeType.server_hello_done) break;
@@ -168,51 +298,51 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
         .data = try debug.hexStringToSlice(alloc, "0E000000"),
     };
     defer alloc.free(test_record.data);
+    std.log.debug("===> Sent to server", .{});
+    try printRecord(test_record);
     try sendRecord(alloc, sock, test_record);
     var answer2 = try recieveRecord(sock, alloc);
     defer alloc.free(answer2.data);
-    std.log.debug("{}", .{answer2});
+    std.log.debug("===> Recieved from server", .{});
+    try printRecord(answer2);
     return 0;
 }
 
-pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
+pub fn createClientHello(alloc: *std.mem.Allocator) anyerror!Record {
     // Lengths
-    const essentials_len: usize = 44;
-    var cipher_suites_len: usize = 0;
+    const essentials_len: usize = 38;
+    var session_id_len: usize = 1;
+    var ciphersuites_len: usize = 0;
     var compressions_len: usize = 0;
     var extensions_len: usize = 0;
     var filled: usize = 0;
 
-    // Record Header
-    // Record type
-    var data = try alloc.alloc(u8, essentials_len);
-    errdefer alloc.free(data);
-    data[filled] = @enumToInt(ContentType.handshake);
-    filled += 1;
-    // TLS version
-    std.mem.writeIntSliceBig(u16, data[filled..filled+2], 0x0301);
-    filled += 2;
-    // Allocate space size header
-    filled += 2;
+    var result: Record = .{
+        .type = .handshake,
+        .version = .TLS_1_0,
+        .data = try alloc.alloc(u8, essentials_len),
+    };
+    errdefer alloc.free(result.data);
 
     // Handshake Header
     // Header type
-    data[filled] = @enumToInt(HandshakeType.client_hello);
+    result.data[filled] = @enumToInt(HandshakeType.client_hello);
     filled += 1;
     // allocate space for following bytes count
     filled += 3;
 
     // Client Version
-    std.mem.writeIntSliceBig(u16, data[filled..filled+2], 0x0303);
+    std.mem.writeIntSliceBig(u16, result.data[filled..filled+2], @enumToInt(Version.TLS_1_2));
     filled += 2;
 
     // Client Random
     var rng = std.rand.DefaultPrng.init(@intCast(u64, std.time.timestamp()));
-    for (data[filled..data.len]) |*pointer| pointer.* = rng.random.int(u8);
+    for (result.data[filled..filled+32]) |*pointer| pointer.* = rng.random.int(u8);
     filled += 32;
 
+    result.data = try alloc.realloc(result.data, filled + session_id_len);
     // Session ID
-    data[filled] = 0x00;
+    result.data[filled] = 0x00;
     filled += 1;
 
     // Cipher Suites
@@ -221,58 +351,56 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror![]u8 {
         // .TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
         // .TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
     };
-    cipher_suites_len = 2 + cipher_suites.len * 2;
-    data = try alloc.realloc(data, filled + cipher_suites_len);
-    std.mem.writeIntSliceBig(u16, data[filled..filled+2], cipher_suites.len*2);
+    ciphersuites_len = 2 + cipher_suites.len * 2;
+    result.data = try alloc.realloc(result.data, filled + ciphersuites_len);
+    std.mem.writeIntSliceBig(u16, result.data[filled..filled+2], cipher_suites.len*2);
     filled += 2;
     for (cipher_suites) |suite| {
-        std.mem.writeIntSliceBig(u16, data[filled..filled+2], @enumToInt(suite));
+        std.mem.writeIntSliceBig(u16, result.data[filled..filled+2], @enumToInt(suite));
         filled += 2;
     }
 
     // Compression Methods
     compressions_len += 2;
-    data = try alloc.realloc(data, filled + compressions_len);
-    data[filled] = 0x01;
+    result.data = try alloc.realloc(result.data, filled + compressions_len);
+    result.data[filled] = 0x01;
     filled += 1;
-    data[filled] = 0x00;
+    result.data[filled] = 0x00;
     filled += 1;
 
     // Extensions
     // allocate space for extensions size
-    data = try alloc.realloc(data, filled + 2);
+    result.data = try alloc.realloc(result.data, filled + 2);
     filled += 2;
 
     var extension_server_name: []u8 = (try debug.hexStringToSlice(alloc, "0000000F000D00000A676f6f676c652e636f6d"));
-    data = try alloc.realloc(data, filled + extension_server_name.len);
-    std.mem.copy(u8, data[filled..filled+extension_server_name.len], extension_server_name);
+    result.data = try alloc.realloc(result.data, filled + extension_server_name.len);
+    std.mem.copy(u8, result.data[filled..filled+extension_server_name.len], extension_server_name);
     filled += extension_server_name.len;
     alloc.free(extension_server_name);
     extensions_len += extension_server_name.len;
 
-    // var extension_status_request: []u8 = (try debug.hexStringToSlice(alloc, "000500050100000000"));
-    // data = try alloc.realloc(data, filled + extension_status_request.len);
-    // std.mem.copy(u8, data[filled..filled+extension_status_request.len], extension_status_request);
-    // filled += extension_status_request.len;
-    // alloc.free(extension_status_request);
-    // extensions_len += extension_status_request.len;
+    var extension_status_request: []u8 = (try debug.hexStringToSlice(alloc, "000500050100000000"));
+    result.data = try alloc.realloc(result.data, filled + extension_status_request.len);
+    std.mem.copy(u8, result.data[filled..filled+extension_status_request.len], extension_status_request);
+    filled += extension_status_request.len;
+    alloc.free(extension_status_request);
+    extensions_len += extension_status_request.len;
 
     var extension_supported_groups: []u8 = (try debug.hexStringToSlice(alloc, "000a000400020017"));
-    data = try alloc.realloc(data, filled + extension_supported_groups.len);
-    std.mem.copy(u8, data[filled..filled+extension_supported_groups.len], extension_supported_groups);
+    result.data = try alloc.realloc(result.data, filled + extension_supported_groups.len);
+    std.mem.copy(u8, result.data[filled..filled+extension_supported_groups.len], extension_supported_groups);
     filled += extension_supported_groups.len;
     alloc.free(extension_supported_groups);
     extensions_len += extension_supported_groups.len;
     
-    // Set size for record header
-    std.mem.writeIntSliceBig(u16, data[3..5], @intCast(u16, data.len-5));
     // Set size for handshake header
-    data[6] = 0;
-    std.mem.writeIntSliceBig(u16, data[7..9], @intCast(u16, data.len-5-4));
+    result.data[1] = 0;
+    std.mem.writeIntSliceBig(u16, result.data[2..4], @intCast(u16, result.data.len-4));
     // Set size for extensions header
-    const offset = essentials_len + cipher_suites_len + compressions_len;
-    std.mem.writeIntSliceBig(u16, data[offset..offset+2], @intCast(u16, extensions_len));
-    return data;
+    const offset = essentials_len + ciphersuites_len + compressions_len + session_id_len;
+    std.mem.writeIntSliceBig(u16, result.data[offset..offset+2], @intCast(u16, extensions_len));
+    return result;
 }
 
 /////////////////////////
@@ -335,6 +463,32 @@ pub const CompressedY = enum (u8) {
     _,
 };
 
+pub const HashAlgorithm = enum (u8) {
+    none = 0,
+    md5 = 1,
+    sha1 = 2,
+    sha224 = 3,
+    sha256 = 4,
+    sha384 = 5,
+    sha512 = 6,
+    _,
+};
+
+pub const SignatureAlgorithm = enum (u8) {
+    anonymous = 0,
+    rsa = 1,
+    dsa = 2,
+    ecdsa = 3,
+    _,
+};
+
+pub const ECCurveType = enum (u8) {
+    explicit_prime = 1,
+    explicit_char2 = 2,
+    named_curve = 3,
+    _,
+};
+
 // Formated as IANA names
 // PROTOCOL KEY_EXCHANGE_ALGORITHM DIGITAL_SIGNATURE_ALGORITHM BULK_ENCRYPTION_ALGORITHM HASHING_ALGORITHM
 // List defined here are approved TLS 1.2 Ciphers according to
@@ -370,6 +524,8 @@ pub const CipherSuite = enum (u16) {
 
 pub const ExtensionType = enum (u16) {
     server_name = 0,
+    status_request = 5,
+    supported_groups = 10,
     _,
 };
 
