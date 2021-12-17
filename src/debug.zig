@@ -1,13 +1,12 @@
 const std = @import("std");
 
-// Converts hex string to slice with same data as it is in string
+/// Converts hex string to slice with same data as it is in string
 pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror![]u8 {
     var filled: usize = 0;
     var data: []u8 = try alloc.alloc(u8, string.len >> 1);
     errdefer alloc.free(data);
     for (string) |char, index| {
         if (index % 2 == 0) {
-            
             data[index >> 1] = switch (char) {
                 '0'...'9' => blk: { break :blk char - 48;},
                 'A'...'F' => blk: { break :blk char - 55;},
@@ -26,7 +25,15 @@ pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror!
     return data;
 }
 
-// Prints slice as hex code to console with note about slice content
+/// Converts hex string to slice with same data as it is in string
+pub fn sliceToHexString(alloc: *std.mem.Allocator, slice: []const u8) anyerror![]u8 {
+    var data = try alloc.alloc(u8, slice.len*2);
+    errdefer alloc.free(data);
+    for (slice) |byte, i| _ = try std.fmt.bufPrint(data[i*2..(i+1)*2], "{X:0>2}", .{slice[i]});
+    return data;
+}
+
+/// Prints slice as hex code to console with note about slice content
 pub fn showMem(slice: []u8, note: []const u8) void {
     std.log.debug("examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
     var i: usize = 0;
