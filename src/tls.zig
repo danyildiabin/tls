@@ -6,6 +6,7 @@ const structs = @import("structs.zig");
 
 const ws = std.os.windows.ws2_32;
 const bigInt = std.math.big.int.Managed;
+const rand = std.crypto.random;
 
 /// Will be returning proper TLS session interface in future
 /// Inits a handshake on port 433, Windows only
@@ -13,9 +14,9 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     const port = "443";
     var hints: ws.addrinfo = .{
         .flags = 0,
-        .family = ws.AF_UNSPEC,
-        .socktype = ws.SOCK_STREAM,
-        .protocol = ws.IPPROTO_TCP,
+        .family = ws.AF.UNSPEC,
+        .socktype = ws.SOCK.STREAM,
+        .protocol = ws.IPPROTO.TCP,
         .addrlen = 0,
         .canonname = null,
         .addr = null,
@@ -87,12 +88,12 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
     // Public key generation with secp256r1 curve
     // curve parameters initialization
-    var p: bigInt = try bigInt.init(alloc);
-    var a: bigInt = try bigInt.init(alloc);
-    var b: bigInt = try bigInt.init(alloc);
-    var gx: bigInt = try bigInt.init(alloc);
-    var gy: bigInt = try bigInt.init(alloc);
-    var n: bigInt = try bigInt.init(alloc);
+    var p = try bigInt.init(alloc.*);
+    var a = try bigInt.init(alloc.*);
+    var b = try bigInt.init(alloc.*);
+    var gx = try bigInt.init(alloc.*);
+    var gy = try bigInt.init(alloc.*);
+    var n = try bigInt.init(alloc.*);
     defer p.deinit();
     defer a.deinit();
     defer b.deinit();
@@ -107,13 +108,13 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     try n.setString(16,  "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 
 
-    var x: bigInt = try bigInt.init(alloc);
-    var y: bigInt = try bigInt.init(alloc);
-    var y_pow_2: bigInt = try bigInt.init(alloc);
-    var x_pow_3: bigInt = try bigInt.init(alloc);
-    var ax: bigInt = try bigInt.init(alloc);
-    var result: bigInt = try bigInt.init(alloc);
-    var garbage: bigInt = try bigInt.init(alloc);
+    var x = try bigInt.init(alloc.*);
+    var y = try bigInt.init(alloc.*);
+    var y_pow_2 = try bigInt.init(alloc.*);
+    var x_pow_3 = try bigInt.init(alloc.*);
+    var ax = try bigInt.init(alloc.*);
+    var result = try bigInt.init(alloc.*);
+    var garbage = try bigInt.init(alloc.*);
     defer garbage.deinit();
     defer result.deinit();
     defer x.deinit();
@@ -124,10 +125,9 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
     // generate random 32byte (not 32bit) number
     var randomdata: []u8 = try alloc.alloc(u8, 32);
-    var rng = std.rand.DefaultPrng.init(@intCast(u64, std.time.timestamp()));
-    for (randomdata) |*pointer| pointer.* = rng.random.int(u8);
+    for (randomdata) |*pointer| pointer.* = rand.int(u8);
     var randomdata_string: []u8 = try utility.sliceToHexString(alloc, randomdata);
-    var random: bigInt = try bigInt.init(alloc);
+    var random: bigInt = try bigInt.init(alloc.*);
     defer random.deinit();
     try random.setString(16, "DF975846F2E9BEFE12F787E60C4623BA28CED8BEE184B0B7EFBC477EBD5095BD");
     alloc.free(randomdata_string);
@@ -151,25 +151,29 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
  //temp 2105500643802459836055704388002888456559614687578220162827952000662987686779641784803603123876009687215868686860631762198717048959341230802808117077778102179775361872614879439381530766076052247780506220908335727503498464448325387
 
-    //  y^2 = x^3 + ax + b
-    // Point belong to curve if (X^3 + AX + B - Y**2) % P == 0
-    // x^3 & ax
-    try bigInt.pow(&x_pow_3, x.toConst(), 3);
-    std.log.debug("run1 {}", .{x_pow_3});
-    try bigInt.mul(&ax, a.toConst(), x.toConst());
-    std.log.debug("run2 {}", .{ax});
-    // x^3 + ax
-    try bigInt.add(&result, x_pow_3.toConst(), ax.toConst());
-    std.log.debug("run3 {}", .{result});
-    // (x^3 + ax) + b
-    try bigInt.add(&result, result.toConst(), b.toConst());
-    // (x^3 + ax + b) - y^2
-    try bigInt.pow(&y_pow_2, y.toConst(), 2);
-    try bigInt.sub(&result, result.toConst(), y_pow_2.toConst());
 
-    try bigInt.divFloor(&garbage, &result, y_pow_2.toConst(), p.toConst());
 
-    std.log.debug("res: {any}", .{result});
+    // //  y^2 = x^3 + ax + b
+    // // Point belong to curve if (X^3 + AX + B - Y**2) % P == 0
+    // // x^3 & ax
+    // try bigInt.pow(&x_pow_3, x.toConst(), 3);
+    // std.log.debug("run1 {}", .{x_pow_3});
+    // try bigInt.mul(&ax, a.toConst(), x.toConst());
+    // std.log.debug("run2 {}", .{ax});
+    // // x^3 + ax
+    // try bigInt.add(&result, x_pow_3.toConst(), ax.toConst());
+    // std.log.debug("run3 {}", .{result});
+    // // (x^3 + ax) + b
+    // try bigInt.add(&result, result.toConst(), b.toConst());
+    // // (x^3 + ax + b) - y^2
+    // try bigInt.pow(&y_pow_2, y.toConst(), 2);
+    // try bigInt.sub(&result, result.toConst(), y_pow_2.toConst());
+
+    // try bigInt.divFloor(&garbage, &result, y_pow_2.toConst(), p.toConst());
+
+    // std.log.debug("res: {any}", .{result});
+
+
 
     // // (x^3 + ax + b) % p
     // const temp_const_3 = temp_val_3.toConst();
@@ -190,16 +194,76 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     // defer alloc.free(answer2.data);
     // try debug.printRecord(answer2, "recieved this");
 
-    debug.showMem(client_random, "Client Random");
-    debug.showMem(server_random, "Server Random");
-    debug.showMem(server_public_key_x, "Server Public Key X");
-    debug.showMem(server_public_key_y, "Server Public Key Y");
-    debug.showMem(client_private_key, "Client Private key");
+    // debug.showMem(client_random, "Client Random");
+    // debug.showMem(server_random, "Server Random");
+    // debug.showMem(server_public_key_x, "Server Public Key X");
+    // debug.showMem(server_public_key_y, "Server Public Key Y");
+    // debug.showMem(client_private_key, "Client Private key");
     // debug.showMem(client_public_key_x, "Client Public Key X");
     // debug.showMem(client_public_key_y, "Client Public Key Y");
-    
+
+    var G: Point = .{
+        .x = &gx,
+        .y = &gy,
+    };
+
+    G = try ECCPointDouble(alloc, G);
+    std.debug.print("G: {any}\n", .{G});
+
 
     return 0;
+}
+
+const Point = struct {
+    x: *bigInt,
+    y: *bigInt,
+};
+
+/// Point doubling
+/// lambda = (3X^2 + a)/(2y)
+/// xr = lambda^2 - x1 - x2
+/// yr = lambda(x1 - x2)-y1
+pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!Point {
+    var divident = try bigInt.init(alloc.*);
+    defer divident.deinit();
+    var divider = try bigInt.init(alloc.*);
+    defer divider.deinit();
+    var lambda = try bigInt.init(alloc.*);
+    defer lambda.deinit();
+    var temp = try bigInt.initSet(alloc.*, 3);
+    defer temp.deinit();
+
+    var result_x = try bigInt.init(alloc.*);
+    errdefer result_x.deinit();
+    var result_y = try bigInt.init(alloc.*);
+    errdefer result_y.deinit();
+    var result: Point = .{
+        .x = &result_x,
+        .y = &result_y,
+    };
+
+    try bigInt.pow(&divident, P.x.toConst(), 2);
+    try bigInt.mul(&divident, divident.toConst(), temp.toConst());
+    // FIXME add proper eliptic curve parameter
+    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try bigInt.add(&divident, divident.toConst(), temp.toConst());
+    try temp.set(2);
+    try bigInt.mul(&divider, P.y.toConst(), temp.toConst());
+    try bigInt.divFloor(&temp, &lambda, divident.toConst(), divider.toConst());
+    try bigInt.pow(result.x, lambda.toConst(), 2);
+    try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
+    try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
+    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try bigInt.divFloor(&temp, result.x, result.x.toConst(), temp.toConst());
+
+    try bigInt.sub(result.y, P.x.toConst(), result.x.toConst());
+    std.log.debug("hmm?{any}", .{result.y.*}); // FIXME BUG IS HERE
+    result_y.setSign(true);
+    try bigInt.mul(result.y, result.y.toConst(), lambda.toConst());
+    try bigInt.sub(result.y, result.y.toConst(), P.y.toConst());
+    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try bigInt.divFloor(&temp, result.y, result.y.toConst(), temp.toConst());
+    return result;
 }
 
 // TODO implement proper filling from function parameters
@@ -232,8 +296,7 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror!structs.Record {
     filled += 2;
 
     // Client Random
-    var rng = std.rand.DefaultPrng.init(@intCast(u64, std.time.timestamp()));
-    for (result.data[filled .. filled + 32]) |*pointer| pointer.* = rng.random.int(u8);
+    for (result.data[filled .. filled + 32]) |*pointer| pointer.* = rand.int(u8);
     filled += 32;
 
     result.data = try alloc.realloc(result.data, filled + session_id_len);
@@ -312,7 +375,7 @@ pub fn recieveRecord(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!struct
     const recv_bufsize = 1024;
     var recv_buffer: []u8 = try alloc.alloc(u8, recv_bufsize);
     defer alloc.free(recv_buffer);
-    var recv: i32 = ws.recv(sock, recv_buffer.ptr, @intCast(i32, recv_bufsize), ws.MSG_PEEK);
+    var recv: i32 = ws.recv(sock, recv_buffer.ptr, @intCast(i32, recv_bufsize), ws.MSG.PEEK);
     if (recv == -1) return error.RecvFailed;
     if (recv == 0) return error.ConnectionClosed;
 

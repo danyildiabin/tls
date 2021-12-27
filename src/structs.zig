@@ -1,12 +1,12 @@
 const enums = @import("enums.zig");
 
 pub const handshakeHeader = struct {
-    type: HandshakeType,
+    type: enums.HandshakeType,
     data: []u8,
 };
 
 pub const ClientHelloRecord = struct {
-    version: Version,
+    version: enums.Version,
     client_random: []u8,
     session_id: ?[]u8,
     cipher_suites: []u16,
@@ -32,6 +32,6 @@ pub const Extension = struct {
 };
 
 pub const ECCPublicKey = struct {
-    compressed_y: CompressedY,
+    compressed_y: enums.CompressedY,
     point_x: []u8,
 };
