@@ -3,7 +3,6 @@ const tls = @import("tls.zig");
 const enums = @import("enums.zig");
 const structs = @import("structs.zig");
 
-
 pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
     std.debug.print("\n===> {s}\n", .{note});
     std.debug.print("Type is {}\n", .{record.type});
@@ -39,7 +38,7 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                     const ciphersuites_n = (@intCast(u16, record.data[reading]) << 8 | record.data[reading + 1]) >> 1;
                     std.debug.print("\nProposed {d} ciphersuites:\n", .{ciphersuites_n});
                     reading += 2;
-                    // TODO this function reverses byteorder of u16 to littleEndian, it should not
+                    // FIXME this function reverses byteorder of u16 to littleEndian, it should not
                     var ciphersuites = std.mem.bytesAsSlice(u16, record.data[reading .. reading + ciphersuites_n * 2]);
                     for (ciphersuites) |word| {
                         std.debug.print("{}\n", .{@intToEnum(enums.CipherSuite, ((0x00ff & word) << 8) | ((0xff00 & word) >> 8))});
@@ -65,9 +64,13 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                             reading += 2;
                             const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
                             reading += 2;
-                            //TODO implement something to show extension info
+                            // TODO implement something to show extension info
+                            std.debug.print("Extension: {}, size is {d} bytes: ", .{ extension, extensionsize });
+                            for (record.data[reading .. reading + extensionsize]) |byte| {
+                                std.debug.print("{X:0>2}", .{byte});
+                            }
+                            std.debug.print("\n", .{});
                             reading += extensionsize;
-                            std.debug.print("Extension: {}, size is {d} bytes\n", .{ extension, extensionsize });
                             if (reading == record.data.len) break;
                         }
                     }
@@ -95,7 +98,7 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                     const ciphersuite = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
                     std.debug.print("\nSelected ciphersuite is {}\n", .{@intToEnum(enums.CipherSuite, ciphersuite)});
                     reading += 2;
-                    // TODO: add compressions enum
+                    // TODO add compressions enum
                     std.debug.print("Selected compression method is 0x{X:0>2}\n", .{record.data[reading]});
                     reading += 1;
                     if (reading == record.data.len) {
@@ -109,9 +112,13 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                             reading += 2;
                             const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
                             reading += 2;
-                            // TODO: implement something to show extension info
+                            // TODO implement something to show extension info
+                            std.debug.print("Extension: {}, size is {d} bytes: ", .{ extension, extensionsize });
+                            for (record.data[reading .. reading + extensionsize]) |byte| {
+                                std.debug.print("{X:0>2}", .{byte});
+                            }
+                            std.debug.print("\n", .{});
                             reading += extensionsize;
-                            std.debug.print("Extension: {}, size is {d} bytes\n", .{ extension, extensionsize });
                             if (reading == record.data.len) break;
                         }
                     }
@@ -139,11 +146,19 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                     const keysize = record.data[reading];
                     std.debug.print("PublicKey size is {} bytes\n", .{keysize});
                     reading += 1;
-                    std.debug.print("Public Key is 0x", .{});
-                    for (record.data[reading .. reading + keysize]) |byte| {
+                    // FIXME not sure if parsing this in a right way
+                    var coord_size: usize = record.data[reading]*8;
+                    reading += 1;
+                    std.debug.print("Public Key X: ", .{});
+                    for (record.data[reading .. reading + coord_size]) |byte| {
                         std.debug.print("{X:0>2}", .{byte});
                     }
-                    reading += keysize;
+                    reading += coord_size;
+                    std.debug.print("\nPublic Key Y: ", .{});
+                    for (record.data[reading .. reading + coord_size]) |byte| {
+                        std.debug.print("{X:0>2}", .{byte});
+                    }
+                    reading += coord_size;
                     std.debug.print("\nHashing algorithm is {}\n", .{@intToEnum(enums.HashAlgorithm, record.data[reading])});
                     std.debug.print("Signature algorithm is {}\n", .{@intToEnum(enums.SignatureAlgorithm, record.data[reading + 1])});
                     reading += 2;
@@ -162,7 +177,6 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                 },
                 // TODO: implement certificate status info
                 else => return error.unsupported_handshake_type,
-                // debug.showMem(record.data, "printed record");
             }
         },
         .alert => {
@@ -178,7 +192,7 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
 
 /// Prints slice as hex code to console with note about slice content
 pub fn showMem(slice: []u8, note: []const u8) void {
-    std.log.debug("examining memory \"{s}\" ({d} bytes)", .{note, slice.len});
+    std.log.debug("examining memory \"{s}\" ({d} bytes)", .{ note, slice.len });
     var i: usize = 0;
     while (i < slice.len) : (i += 1) {
         if (i % 32 == 0) {

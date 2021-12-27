@@ -35,8 +35,8 @@ pub const SignatureAlgorithm = enum(u8) {
 };
 
 pub const ECCurveType = enum(u8) {
-    explicit_prime = 1,
-    explicit_char2 = 2,
+    explicit_prime = 1, // deprecated
+    explicit_char2 = 2, // deprecated
     named_curve = 3,
     _,
 };
@@ -81,6 +81,7 @@ pub const ExtensionType = enum(u16) {
     server_name = 0,
     status_request = 5,
     supported_groups = 10,
+    supported_formats = 11,
     _,
 };
 
@@ -145,6 +146,7 @@ pub const HandshakeType = enum(u8) {
     certificate_verify = 15,
     client_key_exchange = 16,
     finished = 20,
+    certificate_url = 21,
     certificate_status = 22,
     key_update = 24,
     message_hash = 254,
@@ -163,29 +165,32 @@ pub const Version = enum(u16) {
 
 /// Named eliptic curves codes
 pub const EllipticCurve = enum(u16) {
-    sect163k1 = 0x0001,
-    sect163r1 = 0x0002,
-    sect163r2 = 0x0003,
-    sect193r1 = 0x0004,
-    sect193r2 = 0x0005,
-    sect233k1 = 0x0006,
-    sect233r1 = 0x0007,
-    sect239k1 = 0x0008,
-    sect283k1 = 0x0009,
-    sect283r1 = 0x000A,
-    sect409k1 = 0x000B,
-    sect409r1 = 0x000C,
-    sect571k1 = 0x000D,
-    sect571r1 = 0x000E,
-    secp160k1 = 0x000F,
-    secp160r1 = 0x0010,
-    secp160r2 = 0x0011,
-    secp192k1 = 0x0012,
-    secp192r1 = 0x0013,
-    secp224k1 = 0x0014,
-    secp224r1 = 0x0015,
-    secp256k1 = 0x0016,
-    secp256r1 = 0x0017,
-    secp384r1 = 0x0018,
+    sect163k1 = 1,  // deprecated
+    sect163r1 = 2,  // deprecated
+    sect163r2 = 3,  // deprecated
+    sect193r1 = 4,  // deprecated
+    sect193r2 = 5,  // deprecated
+    sect233k1 = 6,  // deprecated
+    sect233r1 = 7,  // deprecated
+    sect239k1 = 8,  // deprecated
+    sect283k1 = 9,  // deprecated
+    sect283r1 = 10, // deprecated
+    sect409k1 = 11, // deprecated
+    sect409r1 = 12, // deprecated
+    sect571k1 = 13, // deprecated
+    sect571r1 = 14, // deprecated
+    secp160k1 = 15, // deprecated
+    secp160r1 = 16, // deprecated
+    secp160r2 = 17, // deprecated
+    secp192k1 = 18, // deprecated
+    secp192r1 = 19, // deprecated
+    secp224k1 = 20, // deprecated
+    secp224r1 = 21, // deprecated
+    secp256k1 = 22, // deprecated
+    secp256r1 = 23,
+    secp384r1 = 24,
+    secp521r1 = 25,
+    x25519 = 29,
+    x448 = 30,
     _,
 };
