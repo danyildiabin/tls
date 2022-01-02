@@ -52,7 +52,7 @@ pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!void {
     try bigInt.pow(&divident, P.x.toConst, 2);
     try bigInt.mul(&divident, divident.toConst(), temp.toConst());
     // FIXME add proper eliptic curve parameter
-    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
     try bigInt.add(&divident, divident.toConst(), temp.toConst());
     try temp.set(2);
     try bigInt.mul(&divider, P.y.toConst(), temp.toConst());
@@ -71,6 +71,4 @@ pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!void {
 /// Point addition
 /// xr = lambda^2 - x1 - x2
 /// yr = lambda(x1 - x2)-y1
-pub fn ECCPointAdd() void {
-
-}
+pub fn ECCPointAdd() void {}

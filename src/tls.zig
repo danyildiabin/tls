@@ -100,13 +100,12 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     defer gx.deinit();
     defer gy.deinit();
     defer n.deinit();
-    try a.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
-    try p.setString(16,  "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
-    try b.setString(16,  "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
+    try a.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try p.setString(16, "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
+    try b.setString(16, "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
     try gx.setString(16, "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
     try gy.setString(16, "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5");
-    try n.setString(16,  "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
-
+    try n.setString(16, "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 
     var x = try bigInt.init(alloc.*);
     var y = try bigInt.init(alloc.*);
@@ -141,17 +140,14 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     std.log.debug("random: {any}", .{random});
     std.log.debug("x: {any}", .{x});
     std.log.debug("y: {any}", .{y});
-// a 115792089210356248762697446949407573530086143415290314195533631308867097853948
- // p  115792089210356248762697446949407573530086143415290314195533631308867097853951
- // gx 48439561293906451759052585252797914202762949526041747995844080717082404635286
- // gy 36134250956749795798585127919587881956611106672985015071877198253568414405109
- // rand 33436815818058981058483358951621600002596237373747952831627919882242365437947
- // b 41058363725152142129326129780047268409114441015993725554835256314039467401291
+    // a 115792089210356248762697446949407573530086143415290314195533631308867097853948
+    // p  115792089210356248762697446949407573530086143415290314195533631308867097853951
+    // gx 48439561293906451759052585252797914202762949526041747995844080717082404635286
+    // gy 36134250956749795798585127919587881956611106672985015071877198253568414405109
+    // rand 33436815818058981058483358951621600002596237373747952831627919882242365437947
+    // b 41058363725152142129326129780047268409114441015993725554835256314039467401291
 
-
- //temp 2105500643802459836055704388002888456559614687578220162827952000662987686779641784803603123876009687215868686860631762198717048959341230802808117077778102179775361872614879439381530766076052247780506220908335727503498464448325387
-
-
+    //temp 2105500643802459836055704388002888456559614687578220162827952000662987686779641784803603123876009687215868686860631762198717048959341230802808117077778102179775361872614879439381530766076052247780506220908335727503498464448325387
 
     // //  y^2 = x^3 + ax + b
     // // Point belong to curve if (X^3 + AX + B - Y**2) % P == 0
@@ -173,14 +169,11 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
     // std.log.debug("res: {any}", .{result});
 
-
-
     // // (x^3 + ax + b) % p
     // const temp_const_3 = temp_val_3.toConst();
     // var ignore: bigInt = try bigInt.init(alloc);
     // defer ignore.deinit();
     // try bigInt.divFloor(&ignore, &res_val, temp_const_3, p);
-
 
     // var test_record: structs.Record = .{
     //     .type = .handshake,
@@ -209,7 +202,6 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
 
     G = try ECCPointDouble(alloc, G);
     std.debug.print("G: {any}\n", .{G});
-
 
     return 0;
 }
@@ -245,7 +237,7 @@ pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!Point {
     try bigInt.pow(&divident, P.x.toConst(), 2);
     try bigInt.mul(&divident, divident.toConst(), temp.toConst());
     // FIXME add proper eliptic curve parameter
-    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
     try bigInt.add(&divident, divident.toConst(), temp.toConst());
     try temp.set(2);
     try bigInt.mul(&divider, P.y.toConst(), temp.toConst());
@@ -253,7 +245,7 @@ pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!Point {
     try bigInt.pow(result.x, lambda.toConst(), 2);
     try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
     try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
-    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
     try bigInt.divFloor(&temp, result.x, result.x.toConst(), temp.toConst());
 
     try bigInt.sub(result.y, P.x.toConst(), result.x.toConst());
@@ -261,7 +253,7 @@ pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!Point {
     result_y.setSign(true);
     try bigInt.mul(result.y, result.y.toConst(), lambda.toConst());
     try bigInt.sub(result.y, result.y.toConst(), P.y.toConst());
-    try temp.setString(16,  "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
     try bigInt.divFloor(&temp, result.y, result.y.toConst(), temp.toConst());
     return result;
 }

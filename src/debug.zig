@@ -147,7 +147,7 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                     std.debug.print("PublicKey size is {} bytes\n", .{keysize});
                     reading += 1;
                     // FIXME not sure if parsing this in a right way
-                    var coord_size: usize = record.data[reading]*8;
+                    var coord_size: usize = record.data[reading] * 8;
                     reading += 1;
                     std.debug.print("Public Key X: ", .{});
                     for (record.data[reading .. reading + coord_size]) |byte| {
