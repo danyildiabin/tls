@@ -5,187 +5,74 @@ const structs = @import("structs.zig");
 
 pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
     std.debug.print("\n===> {s}\n", .{note});
-    std.debug.print("Type is {}\n", .{record.type});
-    std.debug.print("Version is {}\n", .{record.version});
+    std.log.debug("Record type is \"{s}\"", .{@tagName(record.type)});
+    std.log.debug("Record version is {s}", .{@tagName(record.version)});
     switch (record.type) {
         .handshake => {
             const handshake_type = @intToEnum(enums.HandshakeType, record.data[0]);
-            std.debug.print("Handshake type is {}\n", .{handshake_type});
-            const size = @intCast(u64, record.data[1]) << 16 | @intCast(u64, record.data[2]) << 8 | @intCast(u64, record.data[3]);
-            std.debug.print("Handshake size is {} bytes\n", .{size});
+            std.log.debug("Handshake type is {s}", .{@tagName(handshake_type)});
+            const size = std.mem.readIntSliceBig(u24, record.data[1..4]);
+            std.log.debug("Handshake size is {} bytes", .{size});
             var reading: usize = 4;
             switch (handshake_type) {
                 .client_hello => {
-                    const version = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
+                    const version = std.mem.readIntSliceBig(u16, record.data[reading .. reading + 2]);
                     reading += 2;
-                    std.debug.print("Protocol version is {}\n", .{@intToEnum(enums.Version, version)});
-                    std.debug.print("Client random is 0x", .{});
-                    for (record.data[reading .. reading + 32]) |byte| {
-                        std.debug.print("{X:0>2}", .{byte});
-                    }
+                    std.log.debug("Protocol version is {s}", .{@tagName(@intToEnum(enums.Version, version))});
+                    std.log.debug("Client random is 0x{s}", .{std.fmt.fmtSliceHexUpper(record.data[reading .. reading + 32])});
                     reading += 32;
-                    std.debug.print("\nSession ID is ", .{});
-                    if (record.data[reading] == 0) {
-                        std.debug.print("not provided", .{});
-                        reading += 1;
-                    } else {
-                        std.debug.print("0x", .{});
-                        for (record.data[reading + 1 .. reading + 1 + record.data[reading]]) |byte| {
-                            std.debug.print("{X:0>2}", .{byte});
-                        }
-                        reading += 1 + record.data[reading];
-                    }
-                    const ciphersuites_n = (@intCast(u16, record.data[reading]) << 8 | record.data[reading + 1]) >> 1;
-                    std.debug.print("\nProposed {d} ciphersuites:\n", .{ciphersuites_n});
-                    reading += 2;
-                    // FIXME this function reverses byteorder of u16 to littleEndian, it should not
-                    var ciphersuites = std.mem.bytesAsSlice(u16, record.data[reading .. reading + ciphersuites_n * 2]);
-                    for (ciphersuites) |word| {
-                        std.debug.print("{}\n", .{@intToEnum(enums.CipherSuite, ((0x00ff & word) << 8) | ((0xff00 & word) >> 8))});
-                    }
-                    reading += ciphersuites_n * 2;
-                    // TODO add compressions enum
-                    const compression_n = record.data[reading];
-                    std.debug.print("Proposed {d} compression algorithms:\n", .{compression_n});
-                    reading += 1;
-                    for (record.data[reading .. reading + compression_n]) |byte| {
-                        std.debug.print("0x{X:0>2}\n", .{byte});
-                    }
-                    reading += compression_n;
-
-                    if (reading == record.data.len) {
-                        std.debug.print("Extensions are not provided\n", .{});
-                    } else {
-                        const extensions_size = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
-                        std.debug.print("Extensions size is {d} bytes\n", .{extensions_size});
-                        reading += 2;
-                        while (true) {
-                            const extension = @intToEnum(enums.ExtensionType, @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]));
-                            reading += 2;
-                            const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
-                            reading += 2;
-                            // TODO implement something to show extension info
-                            std.debug.print("Extension: {}, size is {d} bytes: ", .{ extension, extensionsize });
-                            for (record.data[reading .. reading + extensionsize]) |byte| {
-                                std.debug.print("{X:0>2}", .{byte});
-                            }
-                            std.debug.print("\n", .{});
-                            reading += extensionsize;
-                            if (reading == record.data.len) break;
-                        }
-                    }
+                    reading += try printSessionID(record.data[reading..record.data.len]);
+                    reading += try printCiphersuites(record.data[reading..record.data.len]);
+                    reading += try printCompressions(record.data[reading..record.data.len]);
+                    reading += try printExtensions(record.data[reading..record.data.len]);
                 },
                 .server_hello => {
-                    const version = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
+                    const version = std.mem.readIntSliceBig(u16, record.data[reading .. reading + 2]);
+                    std.log.debug("Protocol version is {s}", .{@tagName(@intToEnum(enums.Version, version))});
                     reading += 2;
-                    std.debug.print("Protocol version is {}\n", .{@intToEnum(enums.Version, version)});
-                    std.debug.print("Server random is 0x", .{});
-                    for (record.data[reading .. reading + 32]) |byte| {
-                        std.debug.print("{X:0>2}", .{byte});
-                    }
+                    std.log.debug("Server random is 0x{s}", .{std.fmt.fmtSliceHexUpper(record.data[reading .. reading + 32])});
                     reading += 32;
-                    std.debug.print("\nSession ID is ", .{});
-                    if (record.data[reading] == 0) {
-                        std.debug.print("not provided", .{});
-                        reading += 1;
-                    } else {
-                        std.debug.print("0x", .{});
-                        for (record.data[reading + 1 .. reading + 1 + record.data[reading]]) |byte| {
-                            std.debug.print("{X:0>2}", .{byte});
-                        }
-                        reading += 1 + record.data[reading];
-                    }
-                    const ciphersuite = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
-                    std.debug.print("\nSelected ciphersuite is {}\n", .{@intToEnum(enums.CipherSuite, ciphersuite)});
+                    reading += try printSessionID(record.data[reading..record.data.len]);
+                    const ciphersuite = std.mem.readIntSliceBig(u16, record.data[reading .. reading + 2]);
+                    std.log.debug("Selected ciphersuite is {s}", .{@tagName(@intToEnum(enums.CipherSuite, ciphersuite))});
                     reading += 2;
                     // TODO add compressions enum
-                    std.debug.print("Selected compression method is 0x{X:0>2}\n", .{record.data[reading]});
+                    std.log.debug("Selected compression method is 0x{X:0>2}", .{record.data[reading]});
                     reading += 1;
-                    if (reading == record.data.len) {
-                        std.debug.print("Extensions are not provided\n", .{});
-                    } else {
-                        const extensions_size = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
-                        std.debug.print("Extensions size is {d} bytes\n", .{extensions_size});
-                        reading += 2;
-                        while (true) {
-                            const extension = @intToEnum(enums.ExtensionType, @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]));
-                            reading += 2;
-                            const extensionsize = @intCast(u16, record.data[reading]) << 8 | @intCast(u16, record.data[reading + 1]);
-                            reading += 2;
-                            // TODO implement something to show extension info
-                            std.debug.print("Extension: {}, size is {d} bytes: ", .{ extension, extensionsize });
-                            for (record.data[reading .. reading + extensionsize]) |byte| {
-                                std.debug.print("{X:0>2}", .{byte});
-                            }
-                            std.debug.print("\n", .{});
-                            reading += extensionsize;
-                            if (reading == record.data.len) break;
-                        }
-                    }
+                    reading += try printExtensions(record.data[reading..record.data.len]);
                 },
                 .certificate => {
-                    const combined_size: u64 = @intCast(u64, record.data[reading]) << 16 | @intCast(u64, record.data[reading + 1]) << 8 | record.data[reading + 2];
-                    std.debug.print("All certificates with size headers is {d} bytes\n", .{combined_size});
-                    reading += 3;
-                    var certificate_n: usize = 0;
-                    while (true) {
-                        certificate_n += 1;
-                        const cert_size: u64 = @intCast(u64, record.data[reading]) << 16 | @intCast(u64, record.data[reading + 1]) << 8 | record.data[reading + 2];
-                        std.debug.print("Certificate #{d} is {d} bytes long\n", .{ certificate_n, cert_size });
-                        reading += 3 + cert_size;
-                        if (reading == record.data.len) break;
-                    }
+                    reading += try printCertificates(record.data[reading..record.data.len]);
                 },
                 .server_key_exchange => {
-                    const curve_type = @intToEnum(enums.ECCurveType, record.data[reading]);
-                    std.debug.print("Curve type is {}\n", .{curve_type});
-                    reading += 1;
-                    const curve = @intToEnum(enums.EllipticCurve, @intCast(u16, record.data[reading]) << 8 | record.data[reading + 1]);
-                    std.debug.print("Selected curve is {}\n", .{curve});
-                    reading += 2;
+                    reading += try printCurveInfo(record.data[reading..record.data.len]);
                     const keysize = record.data[reading];
-                    std.debug.print("PublicKey size is {} bytes\n", .{keysize});
+                    std.log.debug("Public Key size is {d} bytes", .{keysize});
                     reading += 1;
-                    // FIXME not sure if parsing this in a right way
-                    var coord_size: usize = record.data[reading] * 8;
+                    std.log.debug("Public Key: 0x{s}", .{std.fmt.fmtSliceHexUpper(record.data[reading .. reading + keysize])});
+                    reading += keysize;
+                    std.log.debug("Hashing algorithm is {s}", .{@tagName(@intToEnum(enums.HashAlgorithm, record.data[reading]))});
                     reading += 1;
-                    std.debug.print("Public Key X: ", .{});
-                    for (record.data[reading .. reading + coord_size]) |byte| {
-                        std.debug.print("{X:0>2}", .{byte});
-                    }
-                    reading += coord_size;
-                    std.debug.print("\nPublic Key Y: ", .{});
-                    for (record.data[reading .. reading + coord_size]) |byte| {
-                        std.debug.print("{X:0>2}", .{byte});
-                    }
-                    reading += coord_size;
-                    std.debug.print("\nHashing algorithm is {}\n", .{@intToEnum(enums.HashAlgorithm, record.data[reading])});
-                    std.debug.print("Signature algorithm is {}\n", .{@intToEnum(enums.SignatureAlgorithm, record.data[reading + 1])});
+                    std.log.debug("Signature algorithm is {s}", .{@tagName(@intToEnum(enums.SignatureAlgorithm, record.data[reading]))});
+                    reading += 1;
+                    const signature_size = std.mem.readIntSliceBig(u16, record.data[reading .. reading + 2]);
+                    std.log.debug("Signature size is {d} bytes", .{signature_size});
                     reading += 2;
-                    const signature_size = @intCast(u16, record.data[reading]) << 8 | record.data[reading + 1];
-                    std.debug.print("Signature size is {d} bytes\n", .{signature_size});
-                    reading += 2;
-                    std.debug.print("Signature is 0x", .{});
-                    for (record.data[reading .. reading + signature_size]) |byte| {
-                        std.debug.print("{X:0>2}", .{byte});
-                    }
-                    std.debug.print("\n", .{});
+                    std.log.debug("Signature: 0x{s}", .{std.fmt.fmtSliceHexUpper(record.data[reading .. reading + signature_size])});
                 },
                 .server_hello_done => {},
-                .certificate_status => {
-                    std.debug.print("certificate_status debug info unimplemented\n", .{});
-                },
+                .certificate_status => return error.unimplemented_hadnshake_type,
                 // TODO: implement certificate status info
                 else => return error.unsupported_handshake_type,
             }
         },
         .alert => {
-            std.debug.print("Alert type is {}\n", .{@intToEnum(enums.AlertLevel, record.data[0])});
-            std.debug.print("Alert description: {}\n", .{@intToEnum(enums.AlertDescription, record.data[1])});
+            std.log.debug("Alert type is {s}\n", .{@tagName(@intToEnum(enums.AlertLevel, record.data[0]))});
+            std.log.debug("Alert description: {s}\n", .{@tagName(@intToEnum(enums.AlertDescription, record.data[1]))});
         },
-        .change_cipher_spec => {},
-        .application_data => {},
-        .heartbeat => {},
+        .change_cipher_spec => return error.unimplemented_record_type,
+        .application_data => return error.unimplemented_record_type,
+        .heartbeat => return error.unimplemented_record_type,
         else => return error.unsupported_record_type,
     }
 }
@@ -202,4 +89,143 @@ pub fn showMem(slice: []u8, note: []const u8) void {
         std.debug.print(" {X:0>2}", .{slice[i]});
     }
     std.debug.print("\n", .{});
+}
+
+/// returns bytes read
+/// Prints extensions section
+// TODO: add overflow safety checks
+fn printExtensions(remainig_data: []u8) !usize {
+    if (remainig_data.len == 0) {
+        std.log.debug("Extensions are not provided", .{});
+        return 0;
+    } else {
+        var bytes_read: usize = 0;
+        const extensions_size = std.mem.readIntSliceBig(u16, remainig_data[bytes_read .. bytes_read + 2]);
+        if (remainig_data.len != extensions_size + 2) return error.BadExtensionsLength;
+        std.log.debug("Given Extensions: (total size is {d} bytes)", .{extensions_size});
+        bytes_read += 2;
+
+        while (true) {
+            const extension = @intToEnum(enums.ExtensionType, std.mem.readIntSliceBig(u16, remainig_data[bytes_read .. bytes_read + 2]));
+            bytes_read += 2;
+            const extensionsize = std.mem.readIntSliceBig(u16, remainig_data[bytes_read .. bytes_read + 2]);
+            bytes_read += 2;
+            // TODO implement something to show extension info
+            std.log.debug("{s}, size is {d} bytes: 0x{s}", .{ @tagName(extension), extensionsize, std.fmt.fmtSliceHexUpper(remainig_data[bytes_read .. bytes_read + extensionsize]) });
+            bytes_read += extensionsize;
+            if (bytes_read >= remainig_data.len) return bytes_read;
+        }
+    }
+}
+
+// TODO: add compressions enum
+// TODO: add overflow safety checks
+fn printCompressions(remainig_data: []u8) !usize {
+    const compression_n = remainig_data[0];
+    var bytes_read: usize = 1;
+    if (compression_n == 0) {
+        std.log.debug("No compression algorithms proposed", .{});
+    } else {
+        std.log.debug("Proposed {d} compression algorithms:", .{compression_n});
+        for (remainig_data[1 .. 1 + compression_n]) |byte| {
+            std.log.debug("0x{X:0>2}", .{byte});
+        }
+        bytes_read += compression_n;
+    }
+    return bytes_read;
+}
+
+// TODO: add overflow safety checks
+fn printCiphersuites(remainig_data: []u8) !usize {
+    var bytes_read: usize = 0;
+    const ciphersuites_n = std.mem.readIntSliceBig(u16, remainig_data[bytes_read .. bytes_read + 2]) >> 1;
+    std.log.debug("Proposed {d} ciphersuites:", .{ciphersuites_n});
+    bytes_read += 2;
+    var ciphersuites = std.mem.bytesAsSlice(u16, remainig_data[bytes_read .. bytes_read + (ciphersuites_n << 1)]);
+    for (ciphersuites) |ciphersuite| {
+        std.log.debug("{s}", .{@tagName(@intToEnum(enums.CipherSuite, std.mem.bigToNative(u16, ciphersuite)))});
+    }
+    bytes_read += ciphersuites_n << 1;
+    return bytes_read;
+}
+
+// TODO: add overflow safety checks
+fn printSessionID(remainig_data: []u8) !usize {
+    var bytes_read: usize = 1;
+    if (remainig_data[0] == 0) {
+        std.log.debug("Session ID is not provided", .{});
+    } else {
+        std.log.debug("Session ID is 0x{s}", .{std.fmt.fmtSliceHexUpper(remainig_data[bytes_read .. bytes_read + remainig_data[0]])});
+        bytes_read += remainig_data[0];
+    }
+    return bytes_read;
+}
+
+// TODO: add overflow safety checks
+fn printCertificates(remainig_data: []u8) !usize {
+    var bytes_read: usize = 0;
+    const combined_size: u64 = std.mem.readIntSliceBig(u24, remainig_data[bytes_read .. bytes_read + 3]);
+    std.log.debug("All certificates with size headers is {d} bytes", .{combined_size});
+    bytes_read += 3;
+    var certificate_n: usize = 0;
+    while (true) {
+        certificate_n += 1;
+        const cert_size: u64 = std.mem.readIntSliceBig(u24, remainig_data[bytes_read .. bytes_read + 3]);
+        std.log.debug("Certificate #{d} is {d} bytes long", .{ certificate_n, cert_size });
+        bytes_read += 3 + cert_size;
+        if (bytes_read > remainig_data.len) return error.OutOfBounds;
+        if (bytes_read == remainig_data.len) break;
+    }
+    return bytes_read;
+}
+
+//=======================================================
+// https://www.rfc-editor.org/rfc/rfc4492#section-5.4
+//=======================================================
+// struct {
+//     ECCurveType    curve_type;
+//     select (curve_type) {
+//         case explicit_prime:
+//             opaque      prime_p <1..2^8-1>;
+//             ECCurve     curve;
+//             ECPoint     base;
+//             opaque      order <1..2^8-1>;
+//             opaque      cofactor <1..2^8-1>;
+//         case explicit_char2:
+//             uint16      m;
+//             ECBasisType basis;
+//             select (basis) {
+//                 case ec_trinomial:
+//                         opaque  k <1..2^8-1>;
+//                 case ec_pentanomial:
+//                         opaque  k1 <1..2^8-1>;
+//                         opaque  k2 <1..2^8-1>;
+//                         opaque  k3 <1..2^8-1>;
+//             };
+//             ECCurve     curve;
+//             ECPoint     base;
+//             opaque      order <1..2^8-1>;
+//             opaque      cofactor <1..2^8-1>;
+//         case named_curve:
+//             NamedCurve namedcurve;
+//     };
+// } ECParameters;
+//=======================================================
+// TODO: implement explicit_prime and explicit_char2 parsing
+fn printCurveInfo(remainig_data: []u8) !usize {
+    var bytes_read: usize = 0;
+    const curve_type = @intToEnum(enums.ECCurveType, remainig_data[bytes_read]);
+    std.log.debug("Curve type is {s}", .{@tagName(curve_type)});
+    bytes_read += 1;
+    switch (curve_type) {
+        .explicit_prime => return error.explicit_prime_curve_unimplemented,
+        .explicit_char2 => return error.explicit_char2_curve_unimplemented,
+        .named_curve => {
+            const curve = @intToEnum(enums.EllipticCurve, std.mem.readIntSliceBig(u16, remainig_data[bytes_read .. bytes_read + 2]));
+            std.log.debug("Selected named curve is {s}", .{@tagName(curve)});
+            bytes_read += 2;
+        },
+        else => return error.unsupported_curve_type,
+    }
+    return bytes_read;
 }

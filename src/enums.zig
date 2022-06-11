@@ -1,3 +1,4 @@
+// TODO add compression algorithms
 /// TLS Record type
 pub const ContentType = enum(u8) {
     invalid = 0,
@@ -164,16 +165,18 @@ pub const Version = enum(u16) {
 };
 
 /// Named eliptic curves codes
+/// aka TLS Supported Groups
+/// https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-10
 pub const EllipticCurve = enum(u16) {
-    sect163k1 = 1, // deprecated
-    sect163r1 = 2, // deprecated
-    sect163r2 = 3, // deprecated
-    sect193r1 = 4, // deprecated
-    sect193r2 = 5, // deprecated
-    sect233k1 = 6, // deprecated
-    sect233r1 = 7, // deprecated
-    sect239k1 = 8, // deprecated
-    sect283k1 = 9, // deprecated
+    sect163k1 = 1,  // deprecated
+    sect163r1 = 2,  // deprecated
+    sect163r2 = 3,  // deprecated
+    sect193r1 = 4,  // deprecated
+    sect193r2 = 5,  // deprecated
+    sect233k1 = 6,  // deprecated
+    sect233r1 = 7,  // deprecated
+    sect239k1 = 8,  // deprecated
+    sect283k1 = 9,  // deprecated
     sect283r1 = 10, // deprecated
     sect409k1 = 11, // deprecated
     sect409r1 = 12, // deprecated
@@ -187,10 +190,29 @@ pub const EllipticCurve = enum(u16) {
     secp224k1 = 20, // deprecated
     secp224r1 = 21, // deprecated
     secp256k1 = 22, // deprecated
-    secp256r1 = 23,
-    secp384r1 = 24,
-    secp521r1 = 25,
-    x25519 = 29,
-    x448 = 30,
+    secp256r1 = 23, // recomended
+    secp384r1 = 24, // recomended
+    secp521r1 = 25, // deprecated
+    brainpoolP256r1 = 26, // deprecated
+    brainpoolP384r1 = 27, // deprecated
+    brainpoolP512r1 = 28, // deprecated
+    x25519 = 29, // recomended
+    x448 = 30, // recomended
+    brainpoolP256r1tls13 = 31,
+    brainpoolP384r1tls13 = 32,
+    brainpoolP512r1tls13 = 33,
+    GC256A = 34,
+    GC256B = 35,
+    GC256C = 36,
+    GC256D = 37,
+    GC512A = 38,
+    GC512B = 39,
+    GC512C = 40,
+    curveSM2 = 41,
+    ffdhe2048 = 256,
+    ffdhe3072 = 257,
+    ffdhe4096 = 258,
+    ffdhe6144 = 259,
+    ffdhe8192 = 260,
     _,
 };
