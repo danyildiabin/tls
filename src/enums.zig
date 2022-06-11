@@ -10,12 +10,6 @@ pub const ContentType = enum(u8) {
     _,
 };
 
-pub const CompressedY = enum(u8) {
-    even = 2,
-    odd = 3,
-    _,
-};
-
 pub const HashAlgorithm = enum(u8) {
     none = 0,
     md5 = 1,
@@ -78,6 +72,7 @@ pub const CipherSuite = enum(u16) {
 };
 
 /// ClientHello/ServerHello Extension types
+// https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml
 pub const ExtensionType = enum(u16) {
     server_name = 0,
     status_request = 5,
