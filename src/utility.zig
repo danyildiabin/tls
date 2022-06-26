@@ -1,7 +1,7 @@
 const std = @import("std");
 
 /// Converts hex string to slice with same data as it is in string
-pub fn hexStringToSlice(alloc: *std.mem.Allocator, string: []const u8) anyerror![]u8 {
+pub fn hexStringToSlice(alloc: std.mem.Allocator, string: []const u8) anyerror![]u8 {
     var data: []u8 = try alloc.alloc(u8, string.len >> 1);
     errdefer alloc.free(data);
     for (string) |char, index| {

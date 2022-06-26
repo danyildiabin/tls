@@ -3,6 +3,7 @@ const debug = @import("debug.zig");
 const utility = @import("utility.zig");
 const enums = @import("enums.zig");
 const structs = @import("structs.zig");
+const ecc = @import("ecc.zig");
 
 const ws = std.os.windows.ws2_32;
 const bigInt = std.math.big.int.Managed;
@@ -10,7 +11,7 @@ const rand = std.crypto.random;
 
 /// Will be returning proper TLS session interface in future
 /// Inits a handshake on port 433, Windows only
-pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usize {
+pub fn initTLS(hostname: [*:0]const u8, alloc: std.mem.Allocator) anyerror!usize {
     const port = "443";
     var hints: ws.addrinfo = .{
         .flags = 0,
@@ -87,67 +88,50 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     }
 
     // Public key generation with secp256r1 curve
-    // curve parameters initialization
-    var p = try bigInt.init(alloc.*);
-    var a = try bigInt.init(alloc.*);
-    var b = try bigInt.init(alloc.*);
-    var gx = try bigInt.init(alloc.*);
-    var gy = try bigInt.init(alloc.*);
-    var n = try bigInt.init(alloc.*);
-    defer p.deinit();
-    defer a.deinit();
-    defer b.deinit();
-    defer gx.deinit();
-    defer gy.deinit();
-    defer n.deinit();
-    try a.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
-    try p.setString(16, "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
-    try b.setString(16, "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
-    try gx.setString(16, "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
-    try gy.setString(16, "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5");
-    try n.setString(16, "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
-
-    var x = try bigInt.init(alloc.*);
-    var y = try bigInt.init(alloc.*);
-    var y_pow_2 = try bigInt.init(alloc.*);
-    var x_pow_3 = try bigInt.init(alloc.*);
-    var ax = try bigInt.init(alloc.*);
-    var result = try bigInt.init(alloc.*);
-    var garbage = try bigInt.init(alloc.*);
-    defer garbage.deinit();
-    defer result.deinit();
+    std.debug.print("===> calculating public key\n", .{});
+    // temporary numbers
+    var x = try bigInt.init(alloc);
     defer x.deinit();
+    var y = try bigInt.init(alloc);
     defer y.deinit();
+    var y_pow_2 = try bigInt.init(alloc);
     defer y_pow_2.deinit();
+    var x_pow_3 = try bigInt.init(alloc);
     defer x_pow_3.deinit();
+    var ax = try bigInt.init(alloc);
     defer ax.deinit();
+    var result = try bigInt.init(alloc);
+    defer result.deinit();
+    var garbage = try bigInt.init(alloc);
+    defer garbage.deinit();
 
-    // generate random 32byte (not 32bit) number
+    // generate random 32byte (256bit) number
+    var random: bigInt = try bigInt.init(alloc);
+    defer random.deinit();
     var randomdata: []u8 = try alloc.alloc(u8, 32);
     for (randomdata) |*pointer| pointer.* = rand.int(u8);
-    var randomdata_string: []u8 = try utility.sliceToHexString(alloc, randomdata);
-    var random: bigInt = try bigInt.init(alloc.*);
-    defer random.deinit();
-    try random.setString(16, "DF975846F2E9BEFE12F787E60C4623BA28CED8BEE184B0B7EFBC477EBD5095BD");
-    alloc.free(randomdata_string);
-    std.mem.copy(u8, client_private_key, randomdata);
+    var randomdata_string: []u8 = try std.fmt.allocPrint(alloc, "{s}", .{std.fmt.fmtSliceHexUpper(randomdata)});
     alloc.free(randomdata);
-    try bigInt.mul(&x, random.toConst(), gx.toConst());
-    try bigInt.divFloor(&garbage, &x, x.toConst(), p.toConst());
-    try bigInt.mul(&y, random.toConst(), gy.toConst());
-    try bigInt.divFloor(&garbage, &y, y.toConst(), p.toConst());
+    try random.setString(16, randomdata_string);
+    alloc.free(randomdata_string);
 
-    std.log.debug("random: {any}", .{random});
-    std.log.debug("x: {any}", .{x});
-    std.log.debug("y: {any}", .{y});
-    // a 115792089210356248762697446949407573530086143415290314195533631308867097853948
-    // p  115792089210356248762697446949407573530086143415290314195533631308867097853951
-    // gx 48439561293906451759052585252797914202762949526041747995844080717082404635286
-    // gy 36134250956749795798585127919587881956611106672985015071877198253568414405109
-    // rand 33436815818058981058483358951621600002596237373747952831627919882242365437947
-    // b 41058363725152142129326129780047268409114441015993725554835256314039467401291
+    var working_curve = try ecc.NamedCurve.init(alloc, ecc.EllipticCurve.test_curve);
+    defer working_curve.deinit();
 
-    //temp 2105500643802459836055704388002888456559614687578220162827952000662987686779641784803603123876009687215868686860631762198717048959341230802808117077778102179775361872614879439381530766076052247780506220908335727503498464448325387
+    std.log.debug("Curve parameters:", .{});
+    std.log.debug("p: {d}", .{working_curve.p});
+    std.log.debug("a: {d}", .{working_curve.a});
+    std.log.debug("b: {d}", .{working_curve.b});
+    std.log.debug("n: {d}", .{working_curve.n});
+    std.log.debug("x: {d}", .{working_curve.g.x});
+    std.log.debug("y: {d}", .{working_curve.g.y});
+
+    const G = try ecc.pointDouble(alloc, working_curve, working_curve.g);
+    std.log.debug("Calculated point x: {d}", .{G.x});
+    std.log.debug("Calculated point y: {d}", .{G.y});
+    // result on sep256r1 curve G point should be
+    // x: 56515219790691171413109057904011688695424810155802929973526481321309856242040
+    // y: 3377031843712258259223711451491452598088675519751548567112458094635497583569
 
     // //  y^2 = x^3 + ax + b
     // // Point belong to curve if (X^3 + AX + B - Y**2) % P == 0
@@ -195,72 +179,15 @@ pub fn initTLS(hostname: [*:0]const u8, alloc: *std.mem.Allocator) anyerror!usiz
     // debug.showMem(client_public_key_x, "Client Public Key X");
     // debug.showMem(client_public_key_y, "Client Public Key Y");
 
-    var G: Point = .{
-        .x = &gx,
-        .y = &gy,
-    };
-
-    G = try ECCPointDouble(alloc, G);
-    std.debug.print("G: {any}\n", .{G});
+    // G = try ECCPointDouble(alloc, G);
+    // std.debug.print("G: {any}\n", .{G});
 
     return 0;
 }
 
-const Point = struct {
-    x: *bigInt,
-    y: *bigInt,
-};
-
-/// Point doubling
-/// lambda = (3X^2 + a)/(2y)
-/// xr = lambda^2 - x1 - x2
-/// yr = lambda(x1 - x2)-y1
-pub fn ECCPointDouble(alloc: *std.mem.Allocator, P: Point) anyerror!Point {
-    var divident = try bigInt.init(alloc.*);
-    defer divident.deinit();
-    var divider = try bigInt.init(alloc.*);
-    defer divider.deinit();
-    var lambda = try bigInt.init(alloc.*);
-    defer lambda.deinit();
-    var temp = try bigInt.initSet(alloc.*, 3);
-    defer temp.deinit();
-
-    var result_x = try bigInt.init(alloc.*);
-    errdefer result_x.deinit();
-    var result_y = try bigInt.init(alloc.*);
-    errdefer result_y.deinit();
-    var result: Point = .{
-        .x = &result_x,
-        .y = &result_y,
-    };
-
-    try bigInt.pow(&divident, P.x.toConst(), 2);
-    try bigInt.mul(&divident, divident.toConst(), temp.toConst());
-    // FIXME add proper eliptic curve parameter
-    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
-    try bigInt.add(&divident, divident.toConst(), temp.toConst());
-    try temp.set(2);
-    try bigInt.mul(&divider, P.y.toConst(), temp.toConst());
-    try bigInt.divFloor(&temp, &lambda, divident.toConst(), divider.toConst());
-    try bigInt.pow(result.x, lambda.toConst(), 2);
-    try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
-    try bigInt.sub(result.x, result.x.toConst(), P.x.toConst());
-    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
-    try bigInt.divFloor(&temp, result.x, result.x.toConst(), temp.toConst());
-
-    try bigInt.sub(result.y, P.x.toConst(), result.x.toConst());
-    std.log.debug("hmm?{any}", .{result.y.*}); // FIXME BUG IS HERE
-    result_y.setSign(true);
-    try bigInt.mul(result.y, result.y.toConst(), lambda.toConst());
-    try bigInt.sub(result.y, result.y.toConst(), P.y.toConst());
-    try temp.setString(16, "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
-    try bigInt.divFloor(&temp, result.y, result.y.toConst(), temp.toConst());
-    return result;
-}
-
 // TODO implement proper filling from function parameters
 /// Creates basic client hello
-pub fn createClientHello(alloc: *std.mem.Allocator) anyerror!structs.Record {
+pub fn createClientHello(alloc: std.mem.Allocator) anyerror!structs.Record {
     // Lengths
     const essentials_len: usize = 38;
     var session_id_len: usize = 1;
@@ -363,7 +290,7 @@ pub fn createClientHello(alloc: *std.mem.Allocator) anyerror!structs.Record {
 
 /// Recieves TLS record from socket
 /// Result.data must be freed manualy
-pub fn recieveRecord(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!structs.Record {
+pub fn recieveRecord(sock: ws.SOCKET, alloc: std.mem.Allocator) anyerror!structs.Record {
     const recv_bufsize = 1024;
     var recv_buffer: []u8 = try alloc.alloc(u8, recv_bufsize);
     defer alloc.free(recv_buffer);
@@ -401,7 +328,7 @@ pub fn recieveRecord(sock: ws.SOCKET, alloc: *std.mem.Allocator) anyerror!struct
 
 /// Sends TLS record from socket
 /// Result.data must be freed manualy
-pub fn sendRecord(alloc: *std.mem.Allocator, sock: ws.SOCKET, record: structs.Record) anyerror!void {
+pub fn sendRecord(alloc: std.mem.Allocator, sock: ws.SOCKET, record: structs.Record) anyerror!void {
     var send_buffer = try alloc.alloc(u8, 5);
     defer alloc.free(send_buffer);
     send_buffer[0] = @enumToInt(record.type);

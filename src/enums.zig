@@ -163,15 +163,15 @@ pub const Version = enum(u16) {
 /// aka TLS Supported Groups
 /// https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-10
 pub const EllipticCurve = enum(u16) {
-    sect163k1 = 1,  // deprecated
-    sect163r1 = 2,  // deprecated
-    sect163r2 = 3,  // deprecated
-    sect193r1 = 4,  // deprecated
-    sect193r2 = 5,  // deprecated
-    sect233k1 = 6,  // deprecated
-    sect233r1 = 7,  // deprecated
-    sect239k1 = 8,  // deprecated
-    sect283k1 = 9,  // deprecated
+    sect163k1 = 1, // deprecated
+    sect163r1 = 2, // deprecated
+    sect163r2 = 3, // deprecated
+    sect193r1 = 4, // deprecated
+    sect193r2 = 5, // deprecated
+    sect233k1 = 6, // deprecated
+    sect233r1 = 7, // deprecated
+    sect239k1 = 8, // deprecated
+    sect283k1 = 9, // deprecated
     sect283r1 = 10, // deprecated
     sect409k1 = 11, // deprecated
     sect409r1 = 12, // deprecated

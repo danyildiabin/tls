@@ -15,7 +15,7 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
             const handshake_type = @intToEnum(enums.HandshakeType, record.data[reading]);
             std.log.debug("Handshake type is {s}", .{@tagName(handshake_type)});
             reading += 1;
-            const size = sliceToInt(u24, record.data[reading..reading+3]);
+            const size = sliceToInt(u24, record.data[reading .. reading + 3]);
             std.log.debug("Handshake size is {} bytes", .{size});
             reading += 3;
             switch (handshake_type) {
@@ -57,11 +57,13 @@ pub fn printRecord(record: structs.Record, note: []const u8) anyerror!void {
                     reading += 1;
                     const signature_size = sliceToInt(u16, record.data[reading .. reading + 2]);
                     reading += 2;
-                    std.log.debug("Signature: ({d} bytes) 0x{s}", .{signature_size, std.fmt.fmtSliceHexUpper(record.data[reading .. reading + signature_size])});
+                    std.log.debug("Signature: ({d} bytes) 0x{s}", .{ signature_size, std.fmt.fmtSliceHexUpper(record.data[reading .. reading + signature_size]) });
                 },
-                .server_hello_done => {},
-                .certificate_status => return error.unimplemented_hadnshake_type,
+                .server_hello_done => {
+                    std.debug.print("\n", .{});
+                },
                 // TODO: implement certificate status info
+                .certificate_status => return error.unimplemented_hadnshake_type,
                 else => return error.unsupported_handshake_type,
             }
         },
@@ -239,9 +241,9 @@ fn printPublicKey(remainig_data: []u8) !usize {
     std.log.debug("Public Key: ({d} bytes)", .{keysize});
     bytes_read += 1;
     std.log.debug("Assuming uncopmressed key format selected in server_hello", .{});
-    if (remainig_data[bytes_read] != 4) return error.unsupported_key_format; 
+    if (remainig_data[bytes_read] != 4) return error.unsupported_key_format;
     bytes_read += 1;
-    const coordsize = (keysize-1)>>1;
+    const coordsize = (keysize - 1) >> 1;
     std.log.debug("X of public key point: 0x{s}", .{std.fmt.fmtSliceHexUpper(remainig_data[bytes_read .. bytes_read + coordsize])});
     bytes_read += coordsize;
     std.log.debug("Y of public key point: 0x{s}", .{std.fmt.fmtSliceHexUpper(remainig_data[bytes_read .. bytes_read + coordsize])});
